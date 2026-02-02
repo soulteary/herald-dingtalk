@@ -9,16 +9,35 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/pterm/pterm"
+	"github.com/pterm/pterm/putils"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/router"
 	"github.com/soulteary/logger-kit"
+	version "github.com/soulteary/version-kit"
 )
 
+// showBanner displays the startup banner with version
+func showBanner() {
+	pterm.DefaultBox.Println(
+		putils.CenterText(
+			"Herald DingTalk\n" +
+				"DingTalk Notification Provider for Herald\n" +
+				"Version: " + version.Version,
+		),
+	)
+	time.Sleep(time.Millisecond) // Don't ask why, but this fixes the docker-compose log
+}
+
 func main() {
+	// Display startup banner
+	showBanner()
+
 	level := logger.ParseLevelFromEnv("LOG_LEVEL", logger.InfoLevel)
 	log := logger.New(logger.Config{
-		Level:       level,
-		ServiceName: "herald-dingtalk",
+		Level:          level,
+		ServiceName:    "herald-dingtalk",
+		ServiceVersion: version.Version,
 	})
 
 	port := config.Port
