@@ -12,7 +12,7 @@ http://localhost:8083
 
 当配置了 `API_KEY` 时，Herald（或任意调用方）必须在请求头中携带 `X-API-Key`，且值与 herald-dingtalk 的 `API_KEY` 一致。若未携带或不一致，返回 `401 Unauthorized`，`error_code` 为 `"unauthorized"`。
 
-未配置 `API_KEY` 时，`/v1/send` 不需要认证。
+未配置 `API_KEY` 时，`/v1/send` 与 `/v1/resolve` 均不需要认证。
 
 ## 端点
 

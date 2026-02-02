@@ -42,8 +42,10 @@ sequenceDiagram
 
 ## 协议
 
+- **POST /v1/resolve**（可选）  
+  将钉钉 OAuth2 授权码 `auth_code` 兑换为 **userid**。请求：`{ "auth_code": "..." }`。响应：`{ "ok": true, "userid": "..." }` 或错误。详见 [API](docs/zhCN/API.md#解析-oauth2-授权码可选)。
 - **POST /v1/send**  
-  请求：`channel`、`to`（钉钉 userid）、`body`（或 `params.code`）、`idempotency_key`，可选 `template`/`params`/`locale`/`subject`。  
+  请求：`channel`、`to`（钉钉 **userid**，或当 `DINGTALK_LOOKUP_MODE=mobile` 时为 11 位**手机号**）、`body`（或 `params.code`）、`idempotency_key`，可选 `template`/`params`/`locale`/`subject`。  
   响应：`{ "ok": true, "message_id": "...", "provider": "dingtalk" }` 或 `{ "ok": false, "error_code": "...", "error_message": "..." }`。
 - **GET /healthz**：`{ "status": "healthy", "service": "herald-dingtalk" }`（通过 [health-kit](https://github.com/soulteary/health-kit)）。
 
@@ -56,6 +58,7 @@ sequenceDiagram
 | `DINGTALK_APP_KEY` | 钉钉应用 AppKey | `` | 是（发送时） |
 | `DINGTALK_APP_SECRET` | 钉钉应用 AppSecret | `` | 是（发送时） |
 | `DINGTALK_AGENT_ID` | 工作通知使用的 AgentID | `` | 是（发送时） |
+| `DINGTALK_LOOKUP_MODE` | `none`=to 仅 userid；`mobile`=to 支持 userid 或 11 位手机号（需申请 Contact.User.mobile 权限） | `none` | 否 |
 | `LOG_LEVEL` | 日志级别：trace, debug, info, warn, error | `info` | 否 |
 | `IDEMPOTENCY_TTL_SECONDS` | 幂等缓存 TTL（秒） | `300` | 否 |
 
@@ -112,12 +115,12 @@ go tool cover -func=coverage.out
 go tool cover -html=coverage.out
 ```
 
-当前覆盖：`internal/config`（ValidWith）、`internal/idempotency`（NewStore/Get/Set）。Handler、router、dingtalk client 尚未有单元测试覆盖。
+当前覆盖：`internal/config`（ValidWith、LookupMode 常量）、`internal/idempotency`（NewStore/Get/Set）、`internal/dingtalk`（ResolveAuthCode、GetUserIDByMobile、SendWorkNotify 通过 mock HTTP）、`internal/handler`（ResolveHandler、SendHandler、手机号正则）。运行 `DINGTALK_LOOKUP_MODE=mobile go test ./internal/handler/... -run MobileLookup` 可执行手机号查 userid 的用例。静态检查：`golangci-lint run`。
 
 ## 运维
 
 - **优雅关闭**：收到 `SIGINT` 或 `SIGTERM` 后停止接收新请求，在 10 秒超时内完成关闭。会打印 `"shutting down"` 及关闭过程中的错误。
-- **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出结构化 JSON 日志。关键事件：send ok（to, message_id）、send_failed（err, to）、unauthorized、invalid_destination、idempotent hit（debug）、503 provider_down。需要查看幂等命中时可将 `LOG_LEVEL` 设为 `debug`。
+- **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出结构化 JSON 日志。关键事件：send ok（to, message_id）、send_failed（err, to）、resolve ok（userid）、resolve_failed、unauthorized、invalid_destination、idempotent hit（debug）、503 provider_down。需要查看幂等命中时可将 `LOG_LEVEL` 设为 `debug`。
 
 ## 许可证
 

@@ -8,6 +8,7 @@ This guide helps you diagnose and resolve common issues with herald-dingtalk.
 - [503 provider_down](#503-provider_down)
 - [401 Unauthorized](#401-unauthorized)
 - [invalid_destination](#invalid_destination)
+- [resolve_failed (OAuth2 exchange)](#resolve_failed-oauth2-exchange)
 - [Idempotency and Logs](#idempotency-and-logs)
 
 ## DingTalk Message Not Received
@@ -32,7 +33,8 @@ This guide helps you diagnose and resolve common issues with herald-dingtalk.
    - In the DingTalk console, check that the app has “work notification” permission and that the app is published/enabled.
 
 3. **Check visibility and userid**  
-   - The `to` field must be the DingTalk **userid** (not mobile or email). If Herald passes the wrong identifier (e.g. phone number), DingTalk may reject or not deliver.
+   - By default, `to` must be the DingTalk **userid**. If `DINGTALK_LOOKUP_MODE=mobile` is set, `to` can be an 11-digit mobile; herald-dingtalk will look up the userid first (requires **Contact.User.mobile** permission in DingTalk open platform).
+   - If Herald passes the wrong identifier (e.g. non-11-digit and not a userid), DingTalk may reject or not deliver.
    - Ensure the target user is within the app’s visible range (visible to the whole org or to selected depts/users).
 
 4. **Verify DingTalk API limits**  
@@ -50,7 +52,7 @@ This guide helps you diagnose and resolve common issues with herald-dingtalk.
 
 ### Symptoms
 
-- `POST /v1/send` returns HTTP 503 with body: `"ok": false, "error_code": "provider_down", "error_message": "dingtalk not configured"`.
+- `POST /v1/send` or `POST /v1/resolve` returns HTTP 503 with body: `"ok": false, "error_code": "provider_down", "error_message": "dingtalk not configured"`.
 
 ### Cause
 
@@ -68,7 +70,7 @@ At startup, herald-dingtalk checks that all three DingTalk settings are non-empt
 
 ### Symptoms
 
-- `POST /v1/send` returns HTTP 401 with `error_code: "unauthorized"`, `error_message: "invalid or missing API key"`.
+- `POST /v1/send` or `POST /v1/resolve` returns HTTP 401 with `error_code: "unauthorized"`, `error_message: "invalid or missing API key"`.
 
 ### Cause
 
@@ -94,12 +96,32 @@ herald-dingtalk has `API_KEY` set, but the request either does not send `X-API-K
 
 ### Cause
 
-The request body has an empty or missing `to` field. For herald-dingtalk, `to` must be the DingTalk userid.
+- The request body has an empty or missing `to` field.
+- Or when `DINGTALK_LOOKUP_MODE=mobile`, `to` is an 11-digit mobile but “query user by mobile” fails (e.g. Contact.User.mobile permission not granted, mobile not in org address book). Then herald-dingtalk returns `invalid_destination` with `error_message` containing “mobile lookup failed”.
 
 ### Solutions
 
-1. Ensure Herald sends a non-empty `to` (destination) when calling herald-dingtalk. For channel `dingtalk`, Herald should pass the DingTalk userid as the destination (from Warden or your user store).
-2. Check that the mapping from “user identifier” to “DingTalk userid” is correct and never yields an empty string.
+1. Ensure Herald sends a non-empty `to` (destination). By default `to` must be the DingTalk userid (from Warden, `/v1/resolve` after OAuth2 callback, or your user store).
+2. If using `DINGTALK_LOOKUP_MODE=mobile`: grant **Contact.User.mobile** (query user by mobile) permission in DingTalk open platform; confirm the mobile belongs to the org address book; check logs for “mobile lookup failed” details.
+3. Check that the mapping from “user identifier” to “DingTalk userid” is correct and never yields an empty string.
+
+---
+
+## resolve_failed (OAuth2 exchange)
+
+### Symptoms
+
+- `POST /v1/resolve` returns HTTP 400 with `error_code: "resolve_failed"`, `error_message` mentioning oauth2 userAccessToken or users/me.
+
+### Cause
+
+The DingTalk OAuth2 auth code could not be exchanged for userid. Common causes: code expired (about 5 minutes), code already used, clientId/clientSecret mismatch with the DingTalk app, or OAuth2 callback/permissions not configured for the app.
+
+### Solutions
+
+1. Confirm `DINGTALK_APP_KEY` and `DINGTALK_APP_SECRET` match the DingTalk open platform app.
+2. In DingTalk open platform, check the app’s “Login and share” callback URL and OAuth2 permissions.
+3. Ensure the `auth_code` sent to `/v1/resolve` is the OAuth2 `code` from DingTalk callback, not expired and not reused.
 
 ---
 
@@ -111,8 +133,8 @@ When Herald (or any client) sends the same `Idempotency-Key` (or body `idempoten
 
 ### Log level
 
-- **info**: You see `send ok` and `send_failed` (and 503/401 as above).
-- **debug**: You also see `send idempotent hit` for cached responses. Set `LOG_LEVEL=debug` to verify that repeated requests with the same idempotency key are being cached.
+- **info**: You see `send ok`, `send_failed`, `resolve ok`, `resolve_failed` (and 503/401 as above).
+- **debug**: You also see `send idempotent hit` and `send: resolved mobile to userid` (when DINGTALK_LOOKUP_MODE=mobile and `to` is a mobile). Set `LOG_LEVEL=debug` to verify that repeated requests with the same idempotency key are being cached.
 
 ### TTL
 

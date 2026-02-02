@@ -4,8 +4,8 @@ This document describes security considerations and recommendations for herald-d
 
 ## API Key
 
-- When `API_KEY` is set, herald-dingtalk requires the `X-API-Key` header to match. Use a strong, unique value and keep it secret.
-- Herald must be configured with the same value as `HERALD_DINGTALK_API_KEY` so that it sends the key on every request to herald-dingtalk.
+- When `API_KEY` is set, herald-dingtalk requires the `X-API-Key` header to match for **POST /v1/send** and **POST /v1/resolve**. Use a strong, unique value and keep it secret.
+- Herald must be configured with the same value as `HERALD_DINGTALK_API_KEY` so that it sends the key on every request to herald-dingtalk; Stargate or other callers of `/v1/resolve` must also send the same key when `API_KEY` is set.
 - Do not log or expose the API key. Prefer environment variables or a secret manager over config files committed to source control.
 
 ## DingTalk Credentials

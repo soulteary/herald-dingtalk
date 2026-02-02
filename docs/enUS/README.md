@@ -33,7 +33,9 @@ Welcome to the herald-dingtalk documentation. herald-dingtalk is the DingTalk no
   - Messages not received
   - 503 provider_down
   - 401 unauthorized
-  - Invalid destination and idempotency
+  - invalid_destination (including mobile lookup failure)
+  - resolve_failed (OAuth2 exchange)
+  - Idempotency and logs
 
 - **[SECURITY.md](SECURITY.md)** - Security practices
   - API Key usage

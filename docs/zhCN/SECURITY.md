@@ -4,8 +4,8 @@
 
 ## API Key
 
-- 配置 `API_KEY` 后，herald-dingtalk 会要求请求头 `X-API-Key` 与之一致。请使用足够强且唯一的密钥并妥善保管。
-- Herald 侧需配置相同的 `HERALD_DINGTALK_API_KEY`，以便在请求 herald-dingtalk 时携带该密钥。
+- 配置 `API_KEY` 后，herald-dingtalk 会要求请求头 `X-API-Key` 与之一致；适用于 **POST /v1/send** 与 **POST /v1/resolve**。请使用足够强且唯一的密钥并妥善保管。
+- Herald 侧需配置相同的 `HERALD_DINGTALK_API_KEY`，以便在请求 herald-dingtalk 时携带该密钥；Stargate 等调用 `/v1/resolve` 时也需携带相同密钥（若已配置）。
 - 不要将 API Key 写入日志或对外暴露。优先使用环境变量或密钥管理服务，避免将密钥写入并提交到仓库的配置文件中。
 
 ## 钉钉凭证

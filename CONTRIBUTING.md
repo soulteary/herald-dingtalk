@@ -5,9 +5,9 @@ Thank you for your interest in contributing to herald-dingtalk.
 ## Development
 
 - **Go version**: 1.25+ (see [go.mod](go.mod)).
-- **Tests**: Run `go test ./...`. Use `go test -cover ./...` for coverage; `go test -coverprofile=coverage.out ./...` then `go tool cover -html=coverage.out` for an HTML report.
+- **Tests**: Run `go test ./...`. Use `go test -cover ./...` for coverage; `go test -coverprofile=coverage.out ./...` then `go tool cover -html=coverage.out` for an HTML report. Tests cover config, idempotency, dingtalk client (ResolveAuthCode, GetUserIDByMobile via mock HTTP), and handlers (resolve, send). For mobile lookup tests, run `DINGTALK_LOOKUP_MODE=mobile go test ./internal/handler/... -run MobileLookup`.
 - **Code style**: Follow standard Go formatting. Run `gofmt -s -w .` before committing. The CI runs `gofmt -s -l .` and fails if there are unformatted files.
-- **Static analysis**: CI runs `go vet ./...`. Optionally use `golangci-lint` locally.
+- **Static analysis**: CI runs `go vet ./...`. Run `golangci-lint run` locally (e.g. errcheck) before submitting.
 
 ## Submitting changes
 

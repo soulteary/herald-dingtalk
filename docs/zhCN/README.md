@@ -33,7 +33,9 @@
   - 收不到消息
   - 503 provider_down
   - 401 unauthorized
-  - 目标无效与幂等
+  - invalid_destination（含 mobile lookup 失败）
+  - resolve_failed（OAuth2 兑换失败）
+  - 幂等与日志
 
 - **[SECURITY.md](SECURITY.md)** - 安全实践
   - API Key 使用

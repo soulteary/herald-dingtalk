@@ -8,6 +8,7 @@
 - [503 provider_down](#503-provider_down)
 - [401 Unauthorized](#401-unauthorized)
 - [invalid_destination](#invalid_destination)
+- [resolve_failed（OAuth2 兑换失败）](#resolve_failedoauth2-兑换失败)
 - [幂等与日志](#幂等与日志)
 
 ## 收不到钉钉消息
@@ -32,7 +33,8 @@
    - 在钉钉后台确认应用已开通「工作通知」权限且应用已启用/发布。
 
 3. **检查可见范围与 userid**  
-   - `to` 必须是钉钉 **userid**（不是手机号或邮箱）。若 Herald 传入错误标识（如手机号），钉钉可能拒绝或无法送达。
+   - 默认下 `to` 必须是钉钉 **userid**。若配置了 `DINGTALK_LOOKUP_MODE=mobile`，`to` 可为 11 位手机号，herald-dingtalk 会先查 userid 再发送；需在钉钉开放平台申请 **Contact.User.mobile** 权限。
+   - 若 Herald 传入错误标识（如非 11 位数字且非 userid），钉钉可能拒绝或无法送达。
    - 确认目标用户在应用可见范围内（全员或指定部门/人员）。
 
 4. **钉钉 API 限流**  
@@ -50,7 +52,7 @@
 
 ### 现象
 
-- `POST /v1/send` 返回 HTTP 503，响应体为 `"ok": false, "error_code": "provider_down", "error_message": "dingtalk not configured"`。
+- `POST /v1/send` 或 `POST /v1/resolve` 返回 HTTP 503，响应体为 `"ok": false, "error_code": "provider_down", "error_message": "dingtalk not configured"`。
 
 ### 原因
 
@@ -68,7 +70,7 @@
 
 ### 现象
 
-- `POST /v1/send` 返回 HTTP 401，`error_code: "unauthorized"`，`error_message: "invalid or missing API key"`。
+- `POST /v1/send` 或 `POST /v1/resolve` 返回 HTTP 401，`error_code: "unauthorized"`，`error_message: "invalid or missing API key"`。
 
 ### 原因
 
@@ -94,12 +96,32 @@ herald-dingtalk 已配置 `API_KEY`，但请求未携带 `X-API-Key` 或携带�
 
 ### 原因
 
-请求体中 `to` 为空或未传。对 herald-dingtalk 而言，`to` 必须为钉钉 userid。
+- 请求体中 `to` 为空或未传。
+- 或当 `DINGTALK_LOOKUP_MODE=mobile` 时，`to` 为 11 位手机号但「根据手机号查询用户」失败（如未申请 Contact.User.mobile 权限、手机号不在企业通讯录等），会返回 `invalid_destination` 且 `error_message` 含 "mobile lookup failed"。
 
 ### 处理
 
-1. 确保 Herald 在调用 herald-dingtalk 时传入非空的 `to`（即 destination）。对 channel `dingtalk`，Herald 应传入钉钉 userid 作为 destination（可从 Warden 或用户库解析）。
-2. 检查「用户标识 → 钉钉 userid」的映射逻辑，避免产生空字符串。
+1. 确保 Herald 在调用 herald-dingtalk 时传入非空的 `to`（即 destination）。默认下 `to` 需为钉钉 userid（可从 Warden、OAuth2 回调后 `/v1/resolve` 或用户库解析）。
+2. 若使用 `DINGTALK_LOOKUP_MODE=mobile`：在钉钉开放平台为应用申请 **Contact.User.mobile**（根据手机号查询用户）权限；确认手机号属于企业通讯录；查看日志中的 "mobile lookup failed" 详情。
+3. 检查「用户标识 → 钉钉 userid」的映射逻辑，避免产生空字符串。
+
+---
+
+## resolve_failed（OAuth2 兑换失败）
+
+### 现象
+
+- `POST /v1/resolve` 返回 HTTP 400，`error_code: "resolve_failed"`，`error_message` 含 oauth2 userAccessToken 或 users/me 相关错误。
+
+### 原因
+
+使用钉钉 OAuth2 授权码兑换 userid 时失败，常见原因：授权码（code）已过期（约 5 分钟）、code 已使用、clientId/clientSecret 与钉钉应用不一致、或钉钉应用未配置相应 OAuth2 回调与权限。
+
+### 处理
+
+1. 确认 `DINGTALK_APP_KEY`、`DINGTALK_APP_SECRET` 与钉钉开放平台中该应用一致。
+2. 在钉钉开放平台检查应用的「登录与分享」回调地址与 OAuth2 权限。
+3. 确保前端/Stargate 传入的 `auth_code` 为钉钉 OAuth2 回调中的 `code`，且未过期、未重复使用。
 
 ---
 
@@ -111,8 +133,8 @@ herald-dingtalk 已配置 `API_KEY`，但请求未携带 `X-API-Key` 或携带�
 
 ### 日志级别
 
-- **info**：可看到 `send ok`、`send_failed` 以及 503/401 等。
-- **debug**：还会看到 `send idempotent hit`，表示命中了幂等缓存。将 `LOG_LEVEL=debug` 可确认重复请求是否被正确缓存。
+- **info**：可看到 `send ok`、`send_failed`、`resolve ok`、`resolve_failed` 以及 503/401 等。
+- **debug**：还会看到 `send idempotent hit`、`send: resolved mobile to userid`（当 DINGTALK_LOOKUP_MODE=mobile 且 to 为手机号时）。将 `LOG_LEVEL=debug` 可确认重复请求是否被正确缓存。
 
 ### TTL
 

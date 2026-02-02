@@ -42,8 +42,10 @@ sequenceDiagram
 
 ## Protocol
 
+- **POST /v1/resolve** (optional)  
+  Exchange DingTalk OAuth2 `auth_code` for **userid**. Request: `{ "auth_code": "..." }`. Response: `{ "ok": true, "userid": "..." }` or error. See [API](docs/enUS/API.md#resolve-oauth2-auth-code-optional).
 - **POST /v1/send**  
-  Request: `channel`, `to` (DingTalk userid), `body` (or `params.code`), `idempotency_key`, optional `template`/`params`/`locale`/`subject`.  
+  Request: `channel`, `to` (DingTalk **userid**, or 11-digit **mobile** when `DINGTALK_LOOKUP_MODE=mobile`), `body` (or `params.code`), `idempotency_key`, optional `template`/`params`/`locale`/`subject`.  
   Response: `{ "ok": true, "message_id": "...", "provider": "dingtalk" }` or `{ "ok": false, "error_code": "...", "error_message": "..." }`.
 - **GET /healthz**: `{ "status": "healthy", "service": "herald-dingtalk" }` (via [health-kit](https://github.com/soulteary/health-kit)).
 
@@ -56,6 +58,7 @@ sequenceDiagram
 | `DINGTALK_APP_KEY` | DingTalk app key | `` | Yes (for send) |
 | `DINGTALK_APP_SECRET` | DingTalk app secret | `` | Yes (for send) |
 | `DINGTALK_AGENT_ID` | Agent ID for work notification | `` | Yes (for send) |
+| `DINGTALK_LOOKUP_MODE` | `none` = `to` is userid only; `mobile` = `to` can be userid or 11-digit mobile (requires Contact.User.mobile permission) | `none` | No |
 | `LOG_LEVEL` | Log level: trace, debug, info, warn, error | `info` | No |
 | `IDEMPOTENCY_TTL_SECONDS` | Idempotency cache TTL (seconds) | `300` | No |
 
@@ -112,12 +115,12 @@ go tool cover -func=coverage.out
 go tool cover -html=coverage.out
 ```
 
-Current coverage: `internal/config` (ValidWith), `internal/idempotency` (NewStore/Get/Set). Handler, router, and dingtalk client are not yet covered by unit tests.
+Current coverage: `internal/config` (ValidWith, LookupMode constants), `internal/idempotency` (NewStore/Get/Set), `internal/dingtalk` (ResolveAuthCode, GetUserIDByMobile, SendWorkNotify via mock HTTP), `internal/handler` (ResolveHandler, SendHandler, mobile regex). Run `DINGTALK_LOOKUP_MODE=mobile go test ./internal/handler/... -run MobileLookup` to exercise mobile lookup. Lint: `golangci-lint run`.
 
 ## Operation
 
 - **Graceful shutdown**: On `SIGINT` or `SIGTERM`, the server stops accepting new requests and shuts down with a 10s timeout. Logs `"shutting down"` and any shutdown error.
-- **Logging**: Structured JSON logs via [logger-kit](https://github.com/soulteary/logger-kit). Key events: send ok (to, message_id), send_failed (err, to), unauthorized, invalid_destination, idempotent hit (debug), 503 provider_down. Set `LOG_LEVEL` to `debug` for idempotent hits.
+- **Logging**: Structured JSON logs via [logger-kit](https://github.com/soulteary/logger-kit). Key events: send ok (to, message_id), send_failed (err, to), resolve ok (userid), resolve_failed, unauthorized, invalid_destination, idempotent hit (debug), 503 provider_down. Set `LOG_LEVEL` to `debug` for idempotent hits.
 
 ## License
 
