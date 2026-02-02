@@ -25,3 +25,18 @@ func TestValidWith(t *testing.T) {
 		})
 	}
 }
+
+func TestLookupModeConstants(t *testing.T) {
+	if LookupModeNone != "none" {
+		t.Errorf("LookupModeNone = %q, want none", LookupModeNone)
+	}
+	if LookupModeMobile != "mobile" {
+		t.Errorf("LookupModeMobile = %q, want mobile", LookupModeMobile)
+	}
+	// LookupMode is read from env at init; ensure it's one of the supported values when unset or set
+	switch LookupMode {
+	case LookupModeNone, LookupModeMobile:
+	default:
+		t.Logf("LookupMode = %q (from env); expected none or mobile in production", LookupMode)
+	}
+}

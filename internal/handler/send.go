@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"regexp"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
@@ -8,6 +10,9 @@ import (
 	"github.com/soulteary/logger-kit"
 	"github.com/soulteary/provider-kit"
 )
+
+// 仅数字且长度 11 视为手机号（用于 DINGTALK_LOOKUP_MODE=mobile 时解析 to）
+var mobileLike = regexp.MustCompile(`^\d{11}$`)
 
 // SendHandler handles POST /v1/send from Herald.
 func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idempotency.Store, log *logger.Logger) error {
@@ -50,9 +55,21 @@ func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idemp
 	if content == "" {
 		content = "您有一条验证消息，请查看。"
 	}
-	taskID, err := dingtalkClient.SendWorkNotify(c.Context(), req.To, content)
+	destUserID := req.To
+	if config.LookupMode == config.LookupModeMobile && mobileLike.MatchString(req.To) {
+		resolved, err := dingtalkClient.GetUserIDByMobile(c.Context(), req.To)
+		if err != nil {
+			log.Warn().Err(err).Str("to", req.To).Msg("send invalid_destination: mobile lookup failed")
+			return c.Status(fiber.StatusBadRequest).JSON(provider.HTTPSendResponse{
+				OK: false, ErrorCode: "invalid_destination", ErrorMessage: "mobile lookup failed: " + err.Error(),
+			})
+		}
+		destUserID = resolved
+		log.Debug().Str("mobile", req.To).Str("userid", destUserID).Msg("send: resolved mobile to userid")
+	}
+	taskID, err := dingtalkClient.SendWorkNotify(c.Context(), destUserID, content)
 	if err != nil {
-		log.Warn().Err(err).Str("to", req.To).Msg("send_failed: dingtalk API error")
+		log.Warn().Err(err).Str("to", destUserID).Msg("send_failed: dingtalk API error")
 		errCode := "send_failed"
 		errMsg := err.Error()
 		if req.IdempotencyKey != "" {

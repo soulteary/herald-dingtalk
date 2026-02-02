@@ -16,16 +16,18 @@
 
 - **[API.md](API.md)** - 完整 API 说明
   - Base URL 与认证
-  - POST /v1/send 请求/响应
+  - POST /v1/resolve（OAuth2 auth_code → userid，可选）
+  - POST /v1/send 请求/响应（to 支持 userid 或手机号，见 DINGTALK_LOOKUP_MODE）
   - GET /healthz
   - 错误码与 HTTP 状态码
   - 幂等
 
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - 部署指南
   - 二进制与 Docker 运行
-  - 配置项说明
+  - 配置项说明（含 DINGTALK_LOOKUP_MODE、Contact.User.mobile）
   - 与 Herald 集成
   - 钉钉应用准备
+  - 模板消息不适用于企业内部应用说明
 
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - 故障排查
   - 收不到消息

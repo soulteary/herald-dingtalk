@@ -70,6 +70,7 @@ services:
 | `DINGTALK_APP_KEY` | DingTalk app key (from DingTalk open platform) | `` | Yes (for send) |
 | `DINGTALK_APP_SECRET` | DingTalk app secret | `` | Yes (for send) |
 | `DINGTALK_AGENT_ID` | Agent ID for work notification | `` | Yes (for send) |
+| `DINGTALK_LOOKUP_MODE` | `none` = `to` is userid only; `mobile` = `to` can be userid or 11-digit mobile (requires Contact.User.mobile permission) | `none` | No |
 | `LOG_LEVEL` | Log level: trace, debug, info, warn, error | `info` | No |
 | `IDEMPOTENCY_TTL_SECONDS` | Idempotency cache TTL in seconds | `300` | No |
 
@@ -126,6 +127,9 @@ To use herald-dingtalk you need a DingTalk enterprise internal application with 
    In the same application, open “Features and permissions” (or “Application agent”). Add an agent if needed, then copy the **AgentID** → set as `DINGTALK_AGENT_ID`.
 
 5. **Permissions and visibility**  
-   Ensure the app has permission to send work notifications and that the target users are within the app’s visible range. The `to` field in `/v1/send` must be the DingTalk **userid** (not mobile/email); userid can be obtained from DingTalk API or admin backend.
+   Ensure the app has permission to send work notifications and that the target users are within the app’s visible range. By default, `to` in `/v1/send` must be DingTalk **userid**. If you set `DINGTALK_LOOKUP_MODE=mobile`, `to` can be an 11-digit mobile; you must then apply for **Contact.User.mobile** (query user by mobile) in the DingTalk open platform. userid can also be obtained via DingTalk API, `/v1/resolve` after OAuth2 callback, or admin backend.
+
+6. **Template messages do not apply to enterprise internal apps**  
+   DingTalk states that **template messages (e.g. sendbytemplate) are only for third-party enterprise apps, not for enterprise internal apps.** This service uses an enterprise internal app + work notification (text message); template messages are not used. Do not assume sendbytemplate is required.
 
 For official details, see [DingTalk Work Notification (Corp Conversation)](https://open.dingtalk.com/document/orgapp/asynchronous-sending-of-enterprise-session-messages).

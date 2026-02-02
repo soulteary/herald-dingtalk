@@ -28,5 +28,14 @@ func Setup(app *fiber.App, log *logger.Logger) {
 		}
 		return handler.SendHandler(c, dingtalkClient, idemStore, log)
 	})
+	v1.Post("/resolve", func(c *fiber.Ctx) error {
+		if dingtalkClient == nil {
+			log.Warn().Msg("resolve 503: dingtalk not configured")
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"ok": false, "error_code": "provider_down", "error_message": "dingtalk not configured",
+			})
+		}
+		return handler.ResolveHandler(c, dingtalkClient, log)
+	})
 	app.Get("/healthz", health.SimpleFiberHandler("herald-dingtalk"))
 }

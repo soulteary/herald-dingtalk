@@ -70,6 +70,7 @@ services:
 | `DINGTALK_APP_KEY` | 钉钉应用 AppKey（来自钉钉开放平台） | `` | 是（发送时） |
 | `DINGTALK_APP_SECRET` | 钉钉应用 AppSecret | `` | 是（发送时） |
 | `DINGTALK_AGENT_ID` | 工作通知使用的 AgentID | `` | 是（发送时） |
+| `DINGTALK_LOOKUP_MODE` | `none`=to 仅 userid；`mobile`=to 支持 userid 或 11 位手机号（需申请 Contact.User.mobile 权限） | `none` | 否 |
 | `LOG_LEVEL` | 日志级别：trace, debug, info, warn, error | `info` | 否 |
 | `IDEMPOTENCY_TTL_SECONDS` | 幂等缓存 TTL（秒） | `300` | 否 |
 
@@ -126,6 +127,9 @@ sequenceDiagram
    在同一应用下进入「功能与权限」或「应用 Agent」，添加 Agent 后复制 **AgentID**，对应配置为 `DINGTALK_AGENT_ID`。
 
 5. **权限与可见范围**  
-   确保应用具备发送工作通知的权限，且目标用户在应用的可见范围内。`/v1/send` 的 `to` 字段必须是钉钉 **userid**（非手机号/邮箱）；userid 可通过钉钉 API 或管理后台获取。
+   确保应用具备发送工作通知的权限，且目标用户在应用的可见范围内。`/v1/send` 的 `to` 字段默认需为钉钉 **userid**；若配置 `DINGTALK_LOOKUP_MODE=mobile`，`to` 可填 11 位手机号，此时需在钉钉开放平台为应用申请 **Contact.User.mobile**（根据手机号查询用户）权限。userid 也可通过钉钉 API、OAuth2 回调后 `/v1/resolve` 或管理后台获取。
+
+6. **模板消息不适用于企业内部应用**  
+   钉钉官方说明：**消息模板（如 sendbytemplate）仅支持第三方企业应用，不支持企业内部应用。** 本服务使用企业内部应用 + 工作通知（文本消息）发送，无需也不使用消息模板，请勿误以为必须使用 sendbytemplate。
 
 官方说明见 [钉钉工作通知（企业会话消息）](https://open.dingtalk.com/document/orgapp/asynchronous-sending-of-enterprise-session-messages)。

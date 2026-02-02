@@ -16,16 +16,18 @@ Welcome to the herald-dingtalk documentation. herald-dingtalk is the DingTalk no
 
 - **[API.md](API.md)** - Complete API reference
   - Base URL and authentication
-  - POST /v1/send request/response
+  - POST /v1/resolve (OAuth2 auth_code → userid, optional)
+  - POST /v1/send request/response (to supports userid or mobile per DINGTALK_LOOKUP_MODE)
   - GET /healthz
   - Error codes and HTTP status codes
   - Idempotency
 
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Deployment guide
   - Binary and Docker run
-  - Configuration options
+  - Configuration options (including DINGTALK_LOOKUP_MODE, Contact.User.mobile)
   - Integration with Herald
   - DingTalk app setup
+  - Template messages not for enterprise internal apps
 
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Troubleshooting guide
   - Messages not received
