@@ -5,10 +5,10 @@ go 1.25.4
 require (
 	github.com/gofiber/fiber/v2 v2.52.11
 	github.com/pterm/pterm v0.12.82
-	github.com/soulteary/cli-kit v1.2.1
+	github.com/soulteary/cli-kit v1.3.1
 	github.com/soulteary/health-kit v1.0.0
-	github.com/soulteary/logger-kit v1.1.0
-	github.com/soulteary/provider-kit v1.1.1
+	github.com/soulteary/logger-kit v1.2.0
+	github.com/soulteary/provider-kit v1.2.0
 	github.com/soulteary/version-kit v1.0.1
 )
 
@@ -30,11 +30,9 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/redis/go-redis/v9 v9.17.3 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.69.0 // indirect
-	github.com/valyala/tcplisten v1.0.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/term v0.39.0 // indirect
