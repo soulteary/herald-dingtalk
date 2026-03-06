@@ -5,11 +5,11 @@ go 1.26.0
 require (
 	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/pterm/pterm v0.12.83
-	github.com/soulteary/cli-kit v1.5.0
-	github.com/soulteary/health-kit v1.1.0
-	github.com/soulteary/logger-kit v1.3.0
-	github.com/soulteary/provider-kit v1.2.0
-	github.com/soulteary/version-kit v1.2.0
+	github.com/soulteary/cli-kit v1.6.0
+	github.com/soulteary/health-kit v1.2.0
+	github.com/soulteary/logger-kit v1.4.0
+	github.com/soulteary/provider-kit v1.3.0
+	github.com/soulteary/version-kit v1.3.0
 )
 
 require (
