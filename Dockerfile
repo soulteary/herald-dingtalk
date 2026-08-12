@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26.5-alpine3.22 AS builder
+FROM golang:1.26.5-alpine3.23 AS builder
 RUN apk add --no-cache git
 WORKDIR /app
 ENV CGO_ENABLED=0 GOOS=linux
@@ -15,7 +15,7 @@ RUN BUILD_DATE=${BUILD_DATE:-$(date +%FT%T%z)} && \
     go build -ldflags "-w -s -X 'github.com/soulteary/version-kit.Version=$VERSION' -X 'github.com/soulteary/version-kit.Commit=$COMMIT' -X 'github.com/soulteary/version-kit.BuildDate=$BUILD_DATE'" -o herald-dingtalk .
 
 # Runtime stage
-FROM alpine:3.22
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates curl
 COPY --from=builder /app/herald-dingtalk /bin/herald-dingtalk
 EXPOSE 8083
