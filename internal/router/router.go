@@ -2,23 +2,31 @@ package router
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/helmet"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/soulteary/health-kit"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/handler"
 	"github.com/soulteary/herald-dingtalk/internal/idempotency"
+	internalmiddleware "github.com/soulteary/herald-dingtalk/internal/middleware"
 	"github.com/soulteary/logger-kit"
 	"github.com/soulteary/provider-kit"
 )
 
 // Setup mounts routes. dingtalkClient and idemStore can be nil if config invalid (send will return 503).
 func Setup(app *fiber.App, log *logger.Logger) {
+	app.Use(recover.New())
+	app.Use(requestid.New())
+	app.Use(helmet.New())
+
 	idemStore := idempotency.NewStore(config.IdemTTLSec)
 	var dingtalkClient *dingtalk.Client
 	if config.Valid() {
 		dingtalkClient = dingtalk.NewClient(config.AppKey, config.AppSecret, config.AgentID)
 	}
-	v1 := app.Group("/v1")
+	v1 := app.Group("/v1", internalmiddleware.RequireAPIKey(config.APIKey, log))
 	v1.Post("/send", func(c *fiber.Ctx) error {
 		if dingtalkClient == nil {
 			log.Warn().Msg("send 503: dingtalk not configured")
@@ -38,4 +46,16 @@ func Setup(app *fiber.App, log *logger.Logger) {
 		return handler.ResolveHandler(c, dingtalkClient, log)
 	})
 	app.Get("/healthz", health.SimpleFiberHandler("herald-dingtalk"))
+	app.Get("/readyz", readinessHandler)
+}
+
+func readinessHandler(c *fiber.Ctx) error {
+	if !config.Valid() {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"status":  "not_ready",
+			"service": "herald-dingtalk",
+			"reason":  "dingtalk not configured",
+		})
+	}
+	return c.JSON(fiber.Map{"status": "ready", "service": "herald-dingtalk"})
 }

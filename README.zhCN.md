@@ -16,6 +16,7 @@ herald-dingtalk 是 [Herald](https://github.com/soulteary/herald) 的钉钉通�
 - **可选 API Key 鉴权**：配置 `API_KEY` 后，Herald 需在请求头中携带 `X-API-Key`；未配置则无需鉴权。
 - **幂等**：合并相同 key 的并发请求，并在 TTL 内缓存成功结果；同一 key 对应不同发送内容时返回 `409 idempotency_conflict`。
 - **优雅关闭**：收到 `SIGINT` 或 `SIGTERM` 后停止接收新请求，并在 10 秒超时内完成关闭。
+- **服务边界加固**：API Key 固定时长校验、请求体限制、HTTP 超时、请求 ID、安全响应头和 panic 恢复。
 
 ## 架构
 
@@ -48,6 +49,7 @@ sequenceDiagram
   请求：`channel`（传入时必须为 `dingtalk`）、`to`（钉钉 **userid**，或当 `DINGTALK_LOOKUP_MODE=mobile` 时为 11 位**手机号**）、`body`（或 `params.code`）、`idempotency_key`，可选 `template`/`params`/`locale`/`subject`/`timeout_seconds`（0–30）。  
   响应：`{ "ok": true, "message_id": "...", "provider": "dingtalk" }` 或 `{ "ok": false, "error_code": "...", "error_message": "..." }`。
 - **GET /healthz**：`{ "status": "healthy", "service": "herald-dingtalk" }`（通过 [health-kit](https://github.com/soulteary/health-kit)）。
+- **GET /readyz**：仅在钉钉必需凭证均已配置时返回 `200`，否则返回 `503`。
 
 ## 配置
 
@@ -61,6 +63,7 @@ sequenceDiagram
 | `DINGTALK_LOOKUP_MODE` | `none`=to 仅 userid；`mobile`=to 支持 userid 或 11 位手机号（需申请 Contact.User.mobile 权限） | `none` | 否 |
 | `LOG_LEVEL` | 日志级别：trace, debug, info, warn, error | `info` | 否 |
 | `IDEMPOTENCY_TTL_SECONDS` | 幂等缓存 TTL（秒） | `300` | 否 |
+| `MAX_REQUEST_BODY_BYTES` | HTTP 请求体上限，有效范围为 1 字节至 1 MiB | `65536` | 否 |
 
 ## Herald 侧配置
 
@@ -115,12 +118,15 @@ go tool cover -func=coverage.out
 go tool cover -html=coverage.out
 ```
 
-当前覆盖：`internal/config`（ValidWith、LookupMode 常量）、`internal/idempotency`（NewStore/Get/Set）、`internal/dingtalk`（ResolveAuthCode、GetUserIDByMobile、SendWorkNotify 通过 mock HTTP）、`internal/handler`（ResolveHandler、SendHandler、手机号正则）。运行 `DINGTALK_LOOKUP_MODE=mobile go test ./internal/handler/... -run MobileLookup` 可执行手机号查 userid 的用例。静态检查：`golangci-lint run`。
+测试覆盖配置校验、幂等与并发行为、钉钉 HTTP 流程、处理器、鉴权中间件、就绪探针和运维响应头。运行 `DINGTALK_LOOKUP_MODE=mobile go test ./internal/handler/... -run MobileLookup` 可执行手机号查 userid 的用例。静态检查：`golangci-lint run`。
 
 ## 运维
 
 - **优雅关闭**：收到 `SIGINT` 或 `SIGTERM` 后停止接收新请求，在 10 秒超时内完成关闭。会打印 `"shutting down"` 及关闭过程中的错误。
-- **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出结构化 JSON 日志。关键事件：send ok（to, message_id）、send_failed（err, to）、resolve ok（userid）、resolve_failed、unauthorized、invalid_destination、idempotent hit（debug）、503 provider_down。需要查看幂等命中时可将 `LOG_LEVEL` 设为 `debug`。
+- **探针**：`/healthz` 用于存活检查，`/readyz` 用于就绪检查；钉钉凭证未配置完整时就绪探针返回 `503`。
+- **HTTP 边界**：响应包含 `X-Request-ID` 和安全响应头；请求体默认限制为 64 KiB，读取、写入和空闲超时分别为 10、35 和 60 秒。
+- **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出结构化 JSON 日志，不记录接收者标识、手机号、userid、OAuth 授权码、API Key 或请求体。
+- **容器**：运行时镜像内置 Docker 健康检查，并使用非特权 `herald` 用户运行。
 - **钉钉客户端保护**：合并并发 Token 刷新；Token 被明确拒绝时仅刷新重试一次；拒绝非 2xx 响应；响应体限制为 1 MiB。
 
 ## 许可证

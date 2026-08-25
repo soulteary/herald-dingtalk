@@ -16,7 +16,12 @@ RUN BUILD_DATE=${BUILD_DATE:-$(date +%FT%T%z)} && \
 
 # Runtime stage
 FROM alpine:3.23
-RUN apk add --no-cache ca-certificates curl
+RUN apk add --no-cache ca-certificates curl && \
+    addgroup -S herald && \
+    adduser -S -G herald -H -s /sbin/nologin herald
 COPY --from=builder /app/herald-dingtalk /bin/herald-dingtalk
 EXPOSE 8083
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8083/healthz || exit 1
+USER herald:herald
 CMD ["herald-dingtalk"]

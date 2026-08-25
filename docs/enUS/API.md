@@ -14,6 +14,8 @@ When `API_KEY` is set, Herald (or any caller) must send the same value in the `X
 
 If `API_KEY` is not set, no authentication is required for `/v1/send` or `/v1/resolve`.
 
+API key values are compared using a fixed-length constant-time comparison. All responses include an `X-Request-ID`; a caller-supplied value is propagated when present.
+
 ## Endpoints
 
 ### Resolve OAuth2 auth code (optional)
@@ -73,6 +75,12 @@ Check service health. Implemented via [health-kit](https://github.com/soulteary/
   "service": "herald-dingtalk"
 }
 ```
+
+**GET /readyz**
+
+Check whether the service has all required DingTalk credentials. It returns `200` with `status: "ready"` when configured, or `503` with `status: "not_ready"` otherwise. Use `/healthz` for liveness and `/readyz` for readiness.
+
+Requests larger than `MAX_REQUEST_BODY_BYTES` (64 KiB by default) are rejected with HTTP `413 Request Entity Too Large`.
 
 ### Send (DingTalk Work Notification)
 

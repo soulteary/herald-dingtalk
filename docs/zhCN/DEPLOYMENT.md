@@ -150,6 +150,7 @@ services:
       - DINGTALK_LOOKUP_MODE=${DINGTALK_LOOKUP_MODE:-none}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - IDEMPOTENCY_TTL_SECONDS=${IDEMPOTENCY_TTL_SECONDS:-300}
+      - MAX_REQUEST_BODY_BYTES=${MAX_REQUEST_BODY_BYTES:-65536}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8083/healthz"]
@@ -177,6 +178,7 @@ services:
 | `DINGTALK_LOOKUP_MODE` | `none`：`to` 仅支持 userid；`mobile`：`to` 支持 userid 或 11 位手机号（需申请 Contact.User.mobile 权限） | `none` | 否 |
 | `LOG_LEVEL` | 日志级别：trace / debug / info / warn / error | `info` | 否 |
 | `IDEMPOTENCY_TTL_SECONDS` | 成功发送结果的幂等缓存 TTL（秒） | `300` | 否 |
+| `MAX_REQUEST_BODY_BYTES` | HTTP 请求体上限；非正数或超过 1 MiB 时回退到默认值 | `65536` | 否 |
 
 当 `DINGTALK_APP_KEY`、`DINGTALK_APP_SECRET`、`DINGTALK_AGENT_ID` 任一未设置时，`POST /v1/send` 与 `POST /v1/resolve` 会返回 **503**，`error_code` 为 `provider_down`。服务仍会正常启动并响应 `GET /healthz`。
 
@@ -251,10 +253,11 @@ sequenceDiagram
 
 ## 七、生产建议
 
-- **健康检查**：使用 `GET /healthz` 做存活/就绪探测（Docker/Kubernetes 可配置 `interval`、`timeout`、`retries`）。
+- **健康检查**：使用 `GET /healthz` 做存活探测，使用 `GET /readyz` 做就绪探测；内置 Docker 健康检查使用 `/healthz`。
 - **密钥管理**：勿将 `DINGTALK_APP_SECRET`、`API_KEY` 提交到代码库；使用环境变量或密钥管理服务注入。
 - **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出结构化 JSON 日志；可按需将 `LOG_LEVEL` 设为 `debug` 排查幂等与请求详情。
 - **优雅关闭**：进程监听 `SIGINT`/`SIGTERM`，会在停止接收新请求后于 10 秒内完成关闭。
+- **最小权限**：容器默认使用非特权 `herald` 用户运行。
 - **故障排查**：收不到消息、503、401、invalid_destination、resolve_failed 等见 [故障排查指南](TROUBLESHOOTING.md)。
 
 ---
@@ -262,6 +265,7 @@ sequenceDiagram
 ## 八、API 与健康检查
 
 - **GET /healthz**：返回 `{"status":"healthy","service":"herald-dingtalk"}`，用于负载均衡与编排健康探测。
+- **GET /readyz**：钉钉必需凭证配置完整时返回 `200`，否则返回 `503`，用于编排就绪探测。
 - **POST /v1/send**：发送钉钉工作通知（Herald 在 channel=dingtalk 时调用）。
 - **POST /v1/resolve**：将钉钉 OAuth2 的 `auth_code` 兑换为 userid（可选）。
 

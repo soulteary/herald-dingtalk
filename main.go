@@ -29,6 +29,16 @@ func showBanner() {
 	time.Sleep(time.Millisecond) // Don't ask why, but this fixes the docker-compose log
 }
 
+func newApp() *fiber.App {
+	return fiber.New(fiber.Config{
+		DisableStartupMessage: false,
+		BodyLimit:             config.EffectiveMaxRequestBodyBytes(),
+		ReadTimeout:           10 * time.Second,
+		WriteTimeout:          35 * time.Second,
+		IdleTimeout:           60 * time.Second,
+	})
+}
+
 func main() {
 	// Display startup banner
 	showBanner()
@@ -47,7 +57,7 @@ func main() {
 	if !config.Valid() {
 		log.Warn().Msg("DINGTALK_APP_KEY / DINGTALK_APP_SECRET / DINGTALK_AGENT_ID not set; /v1/send will return 503")
 	}
-	app := fiber.New(fiber.Config{DisableStartupMessage: false})
+	app := newApp()
 	router.Setup(app, log)
 
 	go func() {

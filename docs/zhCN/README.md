@@ -18,7 +18,7 @@
   - Base URL 与认证
   - POST /v1/resolve（OAuth2 auth_code → userid，可选）
   - POST /v1/send 请求/响应（to 支持 userid 或手机号，见 DINGTALK_LOOKUP_MODE）
-  - GET /healthz
+  - GET /healthz 与 GET /readyz
   - 错误码与 HTTP 状态码
   - 幂等
 

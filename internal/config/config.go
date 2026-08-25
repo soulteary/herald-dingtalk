@@ -10,6 +10,11 @@ const LookupModeNone = "none"
 // LookupModeMobile 表示 to 支持 userid 或手机号；为手机号时调用钉钉 API 查 userid 再发送。
 const LookupModeMobile = "mobile"
 
+const (
+	defaultMaxRequestBodyBytes = 64 * 1024
+	maxRequestBodyBytesLimit   = 1024 * 1024
+)
+
 var (
 	Port       = env.Get("PORT", ":8083")
 	APIKey     = env.Get("API_KEY", "")
@@ -18,9 +23,20 @@ var (
 	AgentID    = env.Get("DINGTALK_AGENT_ID", "")
 	LogLevel   = env.Get("LOG_LEVEL", "info")
 	IdemTTLSec = env.GetInt("IDEMPOTENCY_TTL_SECONDS", 300)
+	// MaxRequestBodyBytes bounds memory used while parsing one HTTP request.
+	MaxRequestBodyBytes = env.GetInt("MAX_REQUEST_BODY_BYTES", defaultMaxRequestBodyBytes)
 	// LookupMode: none=to 仅 userid；mobile=to 支持 userid 或手机号（需申请 Contact.User.mobile 权限）
 	LookupMode = env.Get("DINGTALK_LOOKUP_MODE", LookupModeNone)
 )
+
+// EffectiveMaxRequestBodyBytes returns a safe request body limit. Invalid or
+// excessively large values fall back to the documented default.
+func EffectiveMaxRequestBodyBytes() int {
+	if MaxRequestBodyBytes <= 0 || MaxRequestBodyBytes > maxRequestBodyBytesLimit {
+		return defaultMaxRequestBodyBytes
+	}
+	return MaxRequestBodyBytes
+}
 
 // ValidWith returns true when all three DingTalk credentials are non-empty.
 func ValidWith(appKey, appSecret, agentID string) bool {
