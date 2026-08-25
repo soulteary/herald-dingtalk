@@ -66,8 +66,8 @@ github.com/soulteary/health-kit v1.3.0 h1:eFK8Yna+X9tHpOc+HDs70W4h1WTmWoPFUpGZ8m
 github.com/soulteary/health-kit v1.3.0/go.mod h1:rRaOMvxfKpukAaewAOkTUZ9N8+MZpql2/sq+keom6qc=
 github.com/soulteary/logger-kit v1.5.0 h1:XR1IpN9HgEvHGS9hrv5KPQHG7R7RvKhv4NcrMzrv7mQ=
 github.com/soulteary/logger-kit v1.5.0/go.mod h1:+znsanVtOpT/a8sMFS8QihIS0QxqDK5VehhSnF0oDcA=
-github.com/soulteary/provider-kit v1.4.1 h1:1lNpMlN+fQkM01pNfSBUr0XnNcu7Pr06vKtlSkirQn0=
-github.com/soulteary/provider-kit v1.4.1/go.mod h1:VGqMbdodHTPsN1DWGH0u+0W5/7BvEocNn/xTswJq1ig=
+github.com/soulteary/provider-kit v1.5.0 h1:MaoaqiTTjGPWstSUUOL0dC6KElkwdBlxjHoRyVbx6gM=
+github.com/soulteary/provider-kit v1.5.0/go.mod h1:VGqMbdodHTPsN1DWGH0u+0W5/7BvEocNn/xTswJq1ig=
 github.com/soulteary/version-kit v1.4.0 h1:l2IJOc8/6iQTQR4PBGqx3IzkWapTWpMu5pHLRiCsghw=
 github.com/soulteary/version-kit v1.4.0/go.mod h1:qRpeoTzXtUg6c9wT8qG+aWYO6aampooNPSxyCA2Y4g4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=

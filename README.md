@@ -45,7 +45,7 @@ sequenceDiagram
 - **POST /v1/resolve** (optional)  
   Exchange DingTalk OAuth2 `auth_code` for **userid**. Request: `{ "auth_code": "..." }`. Response: `{ "ok": true, "userid": "..." }` or error. See [API](docs/enUS/API.md#resolve-oauth2-auth-code-optional).
 - **POST /v1/send**  
-  Request: `channel`, `to` (DingTalk **userid**, or 11-digit **mobile** when `DINGTALK_LOOKUP_MODE=mobile`), `body` (or `params.code`), `idempotency_key`, optional `template`/`params`/`locale`/`subject`.  
+  Request: `channel` (must be `dingtalk` when set), `to` (DingTalk **userid**, or 11-digit **mobile** when `DINGTALK_LOOKUP_MODE=mobile`), `body` (or `params.code`), `idempotency_key`, optional `template`/`params`/`locale`/`subject`/`timeout_seconds` (0–30).  
   Response: `{ "ok": true, "message_id": "...", "provider": "dingtalk" }` or `{ "ok": false, "error_code": "...", "error_message": "..." }`.
 - **GET /healthz**: `{ "status": "healthy", "service": "herald-dingtalk" }` (via [health-kit](https://github.com/soulteary/health-kit)).
 
