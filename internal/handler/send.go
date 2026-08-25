@@ -13,6 +13,7 @@ import (
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/idempotency"
+	"github.com/soulteary/herald-dingtalk/internal/observability"
 	"github.com/soulteary/logger-kit"
 	"github.com/soulteary/provider-kit"
 )
@@ -37,6 +38,7 @@ type fingerprintPayload struct {
 
 // SendHandler handles POST /v1/send from Herald.
 func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idempotency.Store, log *logger.Logger) error {
+	log = observability.RequestLogger(c, log)
 	if !hasJSONContentType(c) {
 		log.Warn().Msg("send unsupported_media_type: application/json required")
 		return sendError(c, fiber.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json")
