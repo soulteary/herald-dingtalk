@@ -89,7 +89,7 @@ http://localhost:8083
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `channel` | string | 否 | Herald 调用时通常为 `"dingtalk"`。 |
+| `channel` | string | 否 | 传入时必须为 `"dingtalk"`；为兼容旧调用，空值仍然接受。 |
 | `to` | string | 是 | 钉钉 **userid**，或（当 `DINGTALK_LOOKUP_MODE=mobile` 时）11 位**手机号**；工作通知为单用户。 |
 | `body` | string | 否 | 消息正文。为空时见下方内容解析规则。 |
 | `idempotency_key` | string | 否 | 幂等键；TTL 内相同 key 返回缓存结果。 |
@@ -97,6 +97,7 @@ http://localhost:8083
 | `params` | object | 否 | 当 `body` 为空且存在 `params.code` 时，内容为「验证码：」+ params.code。 |
 | `locale` | string | 否 | 可选。 |
 | `subject` | string | 否 | 可选。 |
+| `timeout_seconds` | integer | 否 | 单次钉钉请求超时秒数，范围为 0–30；0 表示使用客户端默认值。 |
 
 **destination（to）支持：**
 - **`DINGTALK_LOOKUP_MODE=none`**（默认）：`to` 仅支持钉钉 **userid**。
@@ -133,10 +134,11 @@ http://localhost:8083
 | error_code | HTTP 状态 | 说明 |
 |------------|-----------|------|
 | `unauthorized` | 401 | 已配置 `API_KEY` 但未传或错误的 `X-API-Key`。 |
-| `invalid_request` | 400 | 请求体解析失败（如非法 JSON）。 |
+| `invalid_request` | 400 | 非法 JSON、不支持的 channel，或 `timeout_seconds` 超出 0–30。 |
 | `invalid_destination` | 400 | `to` 为空或未传。 |
 | `provider_down` | 503 | 未配置钉钉（未设置 DINGTALK_APP_KEY / DINGTALK_APP_SECRET / DINGTALK_AGENT_ID）。 |
-| `send_failed` | 500 | 钉钉 API 调用失败（如 token 失败、发送失败）。 |
+| `send_failed` | 502 | 钉钉 API 调用失败（如 token 失败、发送失败）。 |
+| `timeout` | 504 | 请求级超时到期，或钉钉请求被取消。 |
 
 ## 幂等
 

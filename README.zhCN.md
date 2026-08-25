@@ -45,7 +45,7 @@ sequenceDiagram
 - **POST /v1/resolve**（可选）  
   将钉钉 OAuth2 授权码 `auth_code` 兑换为 **userid**。请求：`{ "auth_code": "..." }`。响应：`{ "ok": true, "userid": "..." }` 或错误。详见 [API](docs/zhCN/API.md#解析-oauth2-授权码可选)。
 - **POST /v1/send**  
-  请求：`channel`、`to`（钉钉 **userid**，或当 `DINGTALK_LOOKUP_MODE=mobile` 时为 11 位**手机号**）、`body`（或 `params.code`）、`idempotency_key`，可选 `template`/`params`/`locale`/`subject`。  
+  请求：`channel`（传入时必须为 `dingtalk`）、`to`（钉钉 **userid**，或当 `DINGTALK_LOOKUP_MODE=mobile` 时为 11 位**手机号**）、`body`（或 `params.code`）、`idempotency_key`，可选 `template`/`params`/`locale`/`subject`/`timeout_seconds`（0–30）。  
   响应：`{ "ok": true, "message_id": "...", "provider": "dingtalk" }` 或 `{ "ok": false, "error_code": "...", "error_message": "..." }`。
 - **GET /healthz**：`{ "status": "healthy", "service": "herald-dingtalk" }`（通过 [health-kit](https://github.com/soulteary/health-kit)）。
 

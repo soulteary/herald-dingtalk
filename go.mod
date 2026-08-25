@@ -8,7 +8,7 @@ require (
 	github.com/soulteary/cli-kit v1.7.0
 	github.com/soulteary/health-kit v1.3.0
 	github.com/soulteary/logger-kit v1.5.0
-	github.com/soulteary/provider-kit v1.4.1
+	github.com/soulteary/provider-kit v1.5.0
 	github.com/soulteary/version-kit v1.4.0
 )
 

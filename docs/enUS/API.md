@@ -89,7 +89,7 @@ Send a message to a DingTalk user via the work notification API. Called by Heral
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `channel` | string | No | Typically `"dingtalk"` when sent by Herald. |
+| `channel` | string | No | If present, it must be `"dingtalk"`; empty remains accepted for backward compatibility. |
 | `to` | string | Yes | DingTalk **userid**, or (when `DINGTALK_LOOKUP_MODE=mobile`) an 11-digit **mobile**; single user for work notification. |
 | `body` | string | No | Message text. If empty, see content resolution below. |
 | `idempotency_key` | string | No | Idempotency key; same key within TTL returns cached result. |
@@ -97,6 +97,7 @@ Send a message to a DingTalk user via the work notification API. Called by Heral
 | `params` | object | No | If `body` is empty and `params.code` exists, content becomes `"验证码：" + params.code`. |
 | `locale` | string | No | Optional. |
 | `subject` | string | No | Optional. |
+| `timeout_seconds` | integer | No | Per-request DingTalk timeout in seconds. Accepted range: 0–30; 0 uses the client default. |
 
 **Destination (`to`) support:**
 - **`DINGTALK_LOOKUP_MODE=none`** (default): `to` must be DingTalk **userid**.
@@ -133,10 +134,11 @@ Send a message to a DingTalk user via the work notification API. Called by Heral
 | error_code | HTTP status | Description |
 |------------|-------------|-------------|
 | `unauthorized` | 401 | `API_KEY` is set but `X-API-Key` is missing or invalid. |
-| `invalid_request` | 400 | Request body parse error (invalid JSON). |
+| `invalid_request` | 400 | Invalid JSON, unsupported channel, or `timeout_seconds` outside 0–30. |
 | `invalid_destination` | 400 | `to` is missing or empty. |
 | `provider_down` | 503 | DingTalk not configured (DINGTALK_APP_KEY / DINGTALK_APP_SECRET / DINGTALK_AGENT_ID not set). |
-| `send_failed` | 500 | DingTalk API error (e.g. token failure, send failure). |
+| `send_failed` | 502 | DingTalk API error (e.g. token failure, send failure). |
+| `timeout` | 504 | The request-level timeout expired or the DingTalk request was canceled. |
 
 ## Idempotency
 
