@@ -9,12 +9,12 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/idempotency"
 	"github.com/soulteary/herald-dingtalk/internal/observability"
-	"github.com/soulteary/logger-kit"
+	"github.com/soulteary/logger-kit/v2"
 	"github.com/soulteary/provider-kit"
 )
 
@@ -37,7 +37,7 @@ type fingerprintPayload struct {
 }
 
 // SendHandler handles POST /v1/send from Herald.
-func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idempotency.Store, log *logger.Logger) error {
+func SendHandler(c fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idempotency.Store, log *logger.Logger) error {
 	log = observability.RequestLogger(c, log)
 	if !hasJSONContentType(c) {
 		log.Warn().Msg("send unsupported_media_type: application/json required")
@@ -45,7 +45,7 @@ func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idemp
 	}
 
 	var req provider.HTTPSendRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		log.Warn().Err(err).Msg("send invalid_request: body parse error")
 		return sendError(c, fiber.StatusBadRequest, "invalid_request", err.Error())
 	}
@@ -80,7 +80,7 @@ func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idemp
 		return sendError(c, fiber.StatusBadRequest, "invalid_request", "idempotency key must not contain surrounding whitespace or control characters")
 	}
 
-	requestCtx := context.Context(c.Context())
+	requestCtx := context.Context(c)
 	if req.TimeoutSeconds > 0 {
 		var cancel context.CancelFunc
 		requestCtx, cancel = context.WithTimeout(requestCtx, time.Duration(req.TimeoutSeconds)*time.Second)
@@ -176,10 +176,10 @@ func failureResult(status int, code, message string) idempotency.Result {
 	}
 }
 
-func writeSendResult(c *fiber.Ctx, result idempotency.Result) error {
+func writeSendResult(c fiber.Ctx, result idempotency.Result) error {
 	return c.Status(result.StatusCode).JSON(result.Response)
 }
 
-func sendError(c *fiber.Ctx, status int, code, message string) error {
+func sendError(c fiber.Ctx, status int, code, message string) error {
 	return writeSendResult(c, failureResult(status, code, message))
 }

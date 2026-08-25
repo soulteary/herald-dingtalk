@@ -1,17 +1,17 @@
 package router
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/helmet"
-	"github.com/gofiber/fiber/v2/middleware/recover"
-	"github.com/soulteary/health-kit"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/helmet"
+	"github.com/gofiber/fiber/v3/middleware/recover"
+	"github.com/soulteary/health-kit/v2"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/handler"
 	"github.com/soulteary/herald-dingtalk/internal/idempotency"
 	internalmiddleware "github.com/soulteary/herald-dingtalk/internal/middleware"
 	"github.com/soulteary/herald-dingtalk/internal/observability"
-	"github.com/soulteary/logger-kit"
+	"github.com/soulteary/logger-kit/v2"
 	"github.com/soulteary/provider-kit"
 )
 
@@ -36,7 +36,7 @@ func Setup(app *fiber.App, log *logger.Logger) {
 		internalmiddleware.RequireAPIKey(config.APIKey, log),
 		internalmiddleware.LimitConcurrency(config.EffectiveMaxConcurrentRequests()),
 	)
-	v1.Post("/send", func(c *fiber.Ctx) error {
+	v1.Post("/send", func(c fiber.Ctx) error {
 		if dingtalkClient == nil {
 			observability.RequestLogger(c, log).Warn().Msg("send 503: dingtalk not configured")
 			return c.Status(fiber.StatusServiceUnavailable).JSON(provider.HTTPSendResponse{
@@ -45,7 +45,7 @@ func Setup(app *fiber.App, log *logger.Logger) {
 		}
 		return handler.SendHandler(c, dingtalkClient, idemStore, log)
 	})
-	v1.Post("/resolve", func(c *fiber.Ctx) error {
+	v1.Post("/resolve", func(c fiber.Ctx) error {
 		if dingtalkClient == nil {
 			observability.RequestLogger(c, log).Warn().Msg("resolve 503: dingtalk not configured")
 			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
@@ -58,7 +58,7 @@ func Setup(app *fiber.App, log *logger.Logger) {
 	app.Get("/readyz", readinessHandler)
 }
 
-func readinessHandler(c *fiber.Ctx) error {
+func readinessHandler(c fiber.Ctx) error {
 	if !config.Valid() {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"status":  "not_ready",

@@ -9,9 +9,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/herald-dingtalk/internal/config"
-	"github.com/soulteary/logger-kit"
+	"github.com/soulteary/logger-kit/v2"
 )
 
 type configSnapshot struct {

@@ -25,7 +25,7 @@ go build -o herald-dingtalk .
 可选：注入版本信息（需 [version-kit](https://github.com/soulteary/version-kit) 等）：
 
 ```bash
-go build -ldflags "-w -s -X 'github.com/soulteary/version-kit.Version=v1.0.0' -X 'github.com/soulteary/version-kit.Commit=$(git rev-parse --short HEAD)'" -o herald-dingtalk .
+go build -ldflags "-w -s -X 'github.com/soulteary/version-kit/v2.Version=v1.0.0' -X 'github.com/soulteary/version-kit/v2.Commit=$(git rev-parse --short HEAD)'" -o herald-dingtalk .
 ```
 
 ### 1.2 运行

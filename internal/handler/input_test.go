@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 func TestHasJSONContentType(t *testing.T) {
@@ -20,7 +20,7 @@ func TestHasJSONContentType(t *testing.T) {
 		{contentType: "not a media type", want: false},
 	} {
 		app := fiber.New()
-		app.Post("/", func(c *fiber.Ctx) error {
+		app.Post("/", func(c fiber.Ctx) error {
 			if got := hasJSONContentType(c); got != tt.want {
 				t.Errorf("hasJSONContentType(%q) = %v, want %v", tt.contentType, got, tt.want)
 			}

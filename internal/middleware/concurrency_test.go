@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 func TestLimitConcurrencyRejectsExcessRequestsAndRecovers(t *testing.T) {
@@ -15,7 +15,7 @@ func TestLimitConcurrencyRejectsExcessRequestsAndRecovers(t *testing.T) {
 	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	app.Use(LimitConcurrency(1))
-	app.Get("/work", func(c *fiber.Ctx) error {
+	app.Get("/work", func(c fiber.Ctx) error {
 		entered <- struct{}{}
 		<-release
 		return c.SendStatus(fiber.StatusNoContent)
@@ -23,7 +23,7 @@ func TestLimitConcurrencyRejectsExcessRequestsAndRecovers(t *testing.T) {
 
 	firstDone := make(chan *http.Response, 1)
 	go func() {
-		resp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/work", nil), 5000)
+		resp, _ := app.Test(httptest.NewRequest(http.MethodGet, "/work", nil), fiber.TestConfig{Timeout: 5 * time.Second})
 		firstDone <- resp
 	}()
 
@@ -81,7 +81,7 @@ func TestLimitConcurrencyRejectsExcessRequestsAndRecovers(t *testing.T) {
 func TestLimitConcurrencyCanBeDisabled(t *testing.T) {
 	app := fiber.New()
 	app.Use(LimitConcurrency(0))
-	app.Get("/", func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)

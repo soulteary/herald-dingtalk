@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
-	"github.com/soulteary/logger-kit"
+	"github.com/soulteary/logger-kit/v2"
 )
 
 func TestResolveHandler_Success(t *testing.T) {
@@ -31,7 +31,7 @@ func TestResolveHandler_Success(t *testing.T) {
 	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/resolve", func(c *fiber.Ctx) error { return ResolveHandler(c, client, log) })
+	app.Post("/v1/resolve", func(c fiber.Ctx) error { return ResolveHandler(c, client, log) })
 
 	body := bytes.NewBufferString(`{"auth_code":"code123"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/resolve", body)
@@ -63,7 +63,7 @@ func TestResolveHandler_EmptyAuthCode(t *testing.T) {
 	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/resolve", func(c *fiber.Ctx) error { return ResolveHandler(c, client, log) })
+	app.Post("/v1/resolve", func(c fiber.Ctx) error { return ResolveHandler(c, client, log) })
 
 	body := bytes.NewBufferString(`{"auth_code":""}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/resolve", body)
@@ -94,7 +94,7 @@ func TestResolveHandler_InvalidJSON(t *testing.T) {
 	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/resolve", func(c *fiber.Ctx) error { return ResolveHandler(c, client, log) })
+	app.Post("/v1/resolve", func(c fiber.Ctx) error { return ResolveHandler(c, client, log) })
 
 	body := bytes.NewBufferString(`not json`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/resolve", body)
@@ -114,7 +114,7 @@ func TestResolveHandler_RejectsUnsupportedMediaType(t *testing.T) {
 	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/resolve", func(c *fiber.Ctx) error { return ResolveHandler(c, client, log) })
+	app.Post("/v1/resolve", func(c fiber.Ctx) error { return ResolveHandler(c, client, log) })
 	req := httptest.NewRequest(http.MethodPost, "/v1/resolve", strings.NewReader(`{"auth_code":"code"}`))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := app.Test(req)
@@ -131,7 +131,7 @@ func TestResolveHandler_RejectsUnsafeAuthCode(t *testing.T) {
 	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
 	for _, code := range []string{" code", strings.Repeat("x", maxAuthCodeLength+1)} {
 		app := fiber.New()
-		app.Post("/v1/resolve", func(c *fiber.Ctx) error {
+		app.Post("/v1/resolve", func(c fiber.Ctx) error {
 			return ResolveHandler(c, client, logger.New(logger.Config{Level: logger.ErrorLevel}))
 		})
 		body, _ := json.Marshal(ResolveRequest{AuthCode: code})
@@ -150,7 +150,7 @@ func TestResolveHandler_RejectsUnsafeAuthCode(t *testing.T) {
 
 func TestResolveHandler_ProviderDown(t *testing.T) {
 	app := fiber.New()
-	app.Post("/v1/resolve", func(c *fiber.Ctx) error {
+	app.Post("/v1/resolve", func(c fiber.Ctx) error {
 		return ResolveHandler(c, nil, logger.New(logger.Config{Level: logger.Disabled}))
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/resolve", bytes.NewBufferString(`{"auth_code":"code"}`))
@@ -173,7 +173,7 @@ func TestResolveHandler_MapsOAuthFailure(t *testing.T) {
 	defer server.Close()
 	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
 	app := fiber.New()
-	app.Post("/v1/resolve", func(c *fiber.Ctx) error {
+	app.Post("/v1/resolve", func(c fiber.Ctx) error {
 		return ResolveHandler(c, client, logger.New(logger.Config{Level: logger.Disabled}))
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/resolve", bytes.NewBufferString(`{"auth_code":"code"}`))

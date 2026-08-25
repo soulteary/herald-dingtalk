@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/soulteary/logger-kit"
+	"github.com/gofiber/fiber/v3"
+	"github.com/soulteary/logger-kit/v2"
 )
 
 func TestRequireAPIKey(t *testing.T) {
@@ -27,7 +27,7 @@ func TestRequireAPIKey(t *testing.T) {
 			app := fiber.New()
 			log := logger.New(logger.Config{Level: logger.ErrorLevel})
 			app.Use(RequireAPIKey(tt.expected, log))
-			app.Post("/protected", func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
+			app.Post("/protected", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
 			req := httptest.NewRequest(http.MethodPost, "/protected", nil)
 			if tt.provided != "" {

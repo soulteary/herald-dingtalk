@@ -4,9 +4,9 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/herald-dingtalk/internal/observability"
-	"github.com/soulteary/logger-kit"
+	"github.com/soulteary/logger-kit/v2"
 )
 
 const apiKeyHeader = "X-API-Key"
@@ -15,7 +15,7 @@ const apiKeyHeader = "X-API-Key"
 // Hashing both values before comparing keeps the comparison length fixed and
 // avoids leaking the configured key through simple timing differences.
 func RequireAPIKey(expected string, log *logger.Logger) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		if expected == "" || apiKeyMatches(expected, c.Get(apiKeyHeader)) {
 			return c.Next()
 		}
