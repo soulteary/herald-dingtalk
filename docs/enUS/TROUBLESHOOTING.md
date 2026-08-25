@@ -129,7 +129,9 @@ The DingTalk OAuth2 auth code could not be exchanged for userid. Common causes: 
 
 ### Idempotent hit (cached response)
 
-When Herald (or any client) sends the same `Idempotency-Key` (or body `idempotency_key`) within the configured TTL, herald-dingtalk returns the cached response without calling DingTalk again. This is expected.
+When Herald (or any client) repeats the same successful request with the same `Idempotency-Key` (or body `idempotency_key`) within the configured TTL, herald-dingtalk returns the cached response without calling DingTalk again. Concurrent identical requests are also coalesced. Failed sends are not retained and can be retried.
+
+If the same key is reused with different send content, the service returns `409 idempotency_conflict`; callers must generate a new key for a new logical message.
 
 ### Log level
 

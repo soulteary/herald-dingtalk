@@ -14,7 +14,7 @@ herald-dingtalk 是 [Herald](https://github.com/soulteary/herald) 的钉钉通�
 
 - **与 Herald HTTP Provider 协议一致**：实现 Herald 外部 Provider 的 HTTP 发送契约，请求/响应与 [provider-kit](https://github.com/soulteary/provider-kit) 的 `HTTPSendRequest` / `HTTPSendResponse` 对齐。
 - **可选 API Key 鉴权**：配置 `API_KEY` 后，Herald 需在请求头中携带 `X-API-Key`；未配置则无需鉴权。
-- **幂等**：支持 `Idempotency-Key`（或 body 中的 `idempotency_key`），TTL 内相同 key 直接返回缓存结果，不再调用钉钉。
+- **幂等**：合并相同 key 的并发请求，并在 TTL 内缓存成功结果；同一 key 对应不同发送内容时返回 `409 idempotency_conflict`。
 - **优雅关闭**：收到 `SIGINT` 或 `SIGTERM` 后停止接收新请求，并在 10 秒超时内完成关闭。
 
 ## 架构
@@ -121,6 +121,7 @@ go tool cover -html=coverage.out
 
 - **优雅关闭**：收到 `SIGINT` 或 `SIGTERM` 后停止接收新请求，在 10 秒超时内完成关闭。会打印 `"shutting down"` 及关闭过程中的错误。
 - **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出结构化 JSON 日志。关键事件：send ok（to, message_id）、send_failed（err, to）、resolve ok（userid）、resolve_failed、unauthorized、invalid_destination、idempotent hit（debug）、503 provider_down。需要查看幂等命中时可将 `LOG_LEVEL` 设为 `debug`。
+- **钉钉客户端保护**：合并并发 Token 刷新；Token 被明确拒绝时仅刷新重试一次；拒绝非 2xx 响应；响应体限制为 1 MiB。
 
 ## 许可证
 

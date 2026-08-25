@@ -92,7 +92,7 @@ Send a message to a DingTalk user via the work notification API. Called by Heral
 | `channel` | string | No | If present, it must be `"dingtalk"`; empty remains accepted for backward compatibility. |
 | `to` | string | Yes | DingTalk **userid**, or (when `DINGTALK_LOOKUP_MODE=mobile`) an 11-digit **mobile**; single user for work notification. |
 | `body` | string | No | Message text. If empty, see content resolution below. |
-| `idempotency_key` | string | No | Idempotency key; same key within TTL returns cached result. |
+| `idempotency_key` | string | No | Idempotency key, at most 256 bytes. Successful results are cached within the TTL. |
 | `template` | string | No | Optional; not used for content in current implementation. |
 | `params` | object | No | If `body` is empty and `params.code` exists, content becomes `"验证码：" + params.code`. |
 | `locale` | string | No | Optional. |
@@ -134,14 +134,17 @@ Send a message to a DingTalk user via the work notification API. Called by Heral
 | error_code | HTTP status | Description |
 |------------|-------------|-------------|
 | `unauthorized` | 401 | `API_KEY` is set but `X-API-Key` is missing or invalid. |
-| `invalid_request` | 400 | Invalid JSON, unsupported channel, or `timeout_seconds` outside 0–30. |
+| `invalid_request` | 400 | Invalid JSON, unsupported channel, an oversized idempotency key, or `timeout_seconds` outside 0–30. |
 | `invalid_destination` | 400 | `to` is missing or empty. |
+| `idempotency_conflict` | 409 | Header/body keys differ, or a key is reused with different send content. |
 | `provider_down` | 503 | DingTalk not configured (DINGTALK_APP_KEY / DINGTALK_APP_SECRET / DINGTALK_AGENT_ID not set). |
 | `send_failed` | 502 | DingTalk API error (e.g. token failure, send failure). |
 | `timeout` | 504 | The request-level timeout expired or the DingTalk request was canceled. |
 
 ## Idempotency
 
-- Send requests support idempotency via `Idempotency-Key` header or body field `idempotency_key`.
-- Within the configured TTL (`IDEMPOTENCY_TTL_SECONDS`, default 300), a repeated request with the same key returns the cached response (same `ok`, `message_id`, `provider`) without calling DingTalk again.
-- Cache is in-memory; key expires after TTL.
+- Send requests support idempotency via `Idempotency-Key` header or body field `idempotency_key`. If both are present, they must match.
+- Concurrent requests with the same key and send content share one DingTalk operation and receive the same result.
+- Successful results are cached for `IDEMPOTENCY_TTL_SECONDS` (default 300). Failed operations are shared only with current waiters and are not cached, so a later retry can run again.
+- A key is bound to the channel, destination, body, template, params, subject, and locale. Reuse with different content returns HTTP 409.
+- Cache is process-local, bounded to 10,000 successful entries, and expired entries are removed during subsequent operations. Deployments with multiple replicas require a shared store for cross-instance idempotency.

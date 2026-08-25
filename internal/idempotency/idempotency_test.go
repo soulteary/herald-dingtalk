@@ -1,65 +1,185 @@
 package idempotency
 
 import (
+	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/soulteary/provider-kit"
 )
 
-func TestNewStore(t *testing.T) {
-	s := NewStore(60)
-	if s == nil {
-		t.Fatal("NewStore(60) returned nil")
-	}
-	s0 := NewStore(0)
-	if s0 == nil {
-		t.Fatal("NewStore(0) returned nil")
+func successResult(messageID string) Result {
+	return Result{
+		StatusCode: 200,
+		Response: provider.HTTPSendResponse{
+			OK: true, MessageID: messageID, Provider: "dingtalk",
+		},
 	}
 }
 
-func TestStore_SetAndGetHit(t *testing.T) {
-	s := NewStore(300)
-	key := "idem-key-1"
-	s.Set(key, true, "msg-123")
-	c, hit := s.Get(key)
-	if !hit {
-		t.Fatal("expected hit after Set")
-	}
-	if !c.OK || c.MessageID != "msg-123" {
-		t.Errorf("got OK=%v MessageID=%q, want OK=true MessageID=msg-123", c.OK, c.MessageID)
+func failureResult() Result {
+	return Result{
+		StatusCode: 502,
+		Response: provider.HTTPSendResponse{
+			OK: false, ErrorCode: "send_failed", ErrorMessage: "upstream failed",
+		},
 	}
 }
 
-func TestStore_GetMissNoSet(t *testing.T) {
-	s := NewStore(300)
-	_, hit := s.Get("nonexistent")
-	if hit {
-		t.Fatal("expected miss for key never set")
+func TestStoreCachesSuccessfulResult(t *testing.T) {
+	store := NewStore(300)
+	var calls int
+	first, outcome, err := store.Do(context.Background(), "key", "fingerprint", func() Result {
+		calls++
+		return successResult("message-1")
+	})
+	if err != nil || outcome != OutcomeExecuted || first.Response.MessageID != "message-1" {
+		t.Fatalf("first Do = %#v, %q, %v", first, outcome, err)
+	}
+	second, outcome, err := store.Do(context.Background(), "key", "fingerprint", func() Result {
+		calls++
+		return successResult("message-2")
+	})
+	if err != nil || outcome != OutcomeCached || second.Response.MessageID != "message-1" {
+		t.Fatalf("second Do = %#v, %q, %v", second, outcome, err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
 	}
 }
 
-func TestStore_GetMissAfterExpiry(t *testing.T) {
-	s := NewStore(1) // 1 second TTL
-	key := "expire-key"
-	s.Set(key, true, "msg-456")
-	if _, hit := s.Get(key); !hit {
-		t.Fatal("expected hit immediately after Set")
+func TestStoreDoesNotCacheFailure(t *testing.T) {
+	store := NewStore(300)
+	var calls int
+	for i := 0; i < 2; i++ {
+		result, outcome, err := store.Do(context.Background(), "key", "fingerprint", func() Result {
+			calls++
+			return failureResult()
+		})
+		if err != nil || outcome != OutcomeExecuted || result.Response.ErrorCode != "send_failed" {
+			t.Fatalf("Do = %#v, %q, %v", result, outcome, err)
+		}
 	}
-	time.Sleep(2 * time.Second)
-	_, hit := s.Get(key)
-	if hit {
-		t.Fatal("expected miss after TTL expiry")
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
 	}
 }
 
-func TestStore_SetFailureThenGet(t *testing.T) {
-	s := NewStore(300)
-	key := "fail-key"
-	s.Set(key, false, "")
-	c, hit := s.Get(key)
-	if !hit {
-		t.Fatal("expected hit for cached failure")
+func TestStoreRejectsFingerprintConflict(t *testing.T) {
+	store := NewStore(300)
+	_, _, err := store.Do(context.Background(), "key", "first", func() Result {
+		return successResult("message-1")
+	})
+	if err != nil {
+		t.Fatalf("first Do: %v", err)
 	}
-	if c.OK || c.MessageID != "" {
-		t.Errorf("got OK=%v MessageID=%q, want OK=false MessageID=", c.OK, c.MessageID)
+	_, _, err = store.Do(context.Background(), "key", "second", func() Result {
+		return successResult("message-2")
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+}
+
+func TestStoreCoalescesConcurrentRequests(t *testing.T) {
+	store := NewStore(300)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	var wg sync.WaitGroup
+	results := make(chan Outcome, 8)
+
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, outcome, err := store.Do(context.Background(), "key", "fingerprint", func() Result {
+				if calls.Add(1) == 1 {
+					close(started)
+				}
+				<-release
+				return successResult("message-1")
+			})
+			if err != nil {
+				t.Errorf("Do: %v", err)
+				return
+			}
+			results <- outcome
+		}()
+	}
+	<-started
+	close(release)
+	wg.Wait()
+	close(results)
+
+	if calls.Load() != 1 {
+		t.Fatalf("calls = %d, want 1", calls.Load())
+	}
+	var executed, shared, cached int
+	for outcome := range results {
+		switch outcome {
+		case OutcomeExecuted:
+			executed++
+		case OutcomeShared:
+			shared++
+		case OutcomeCached:
+			cached++
+		}
+	}
+	if executed != 1 || shared+cached != 7 {
+		t.Fatalf("outcomes: executed=%d shared=%d cached=%d", executed, shared, cached)
+	}
+}
+
+func TestStoreWaiterHonorsContextCancellation(t *testing.T) {
+	store := NewStore(300)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	go func() {
+		_, _, _ = store.Do(context.Background(), "key", "fingerprint", func() Result {
+			close(started)
+			<-release
+			return successResult("message-1")
+		})
+	}()
+	<-started
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, err := store.Do(ctx, "key", "fingerprint", func() Result {
+		t.Fatal("waiter must not execute")
+		return Result{}
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	close(release)
+}
+
+func TestStoreExpiresAndEvictsEntries(t *testing.T) {
+	now := time.Unix(100, 0)
+	clock := func() time.Time { return now }
+	store := newStore(1, 1, clock)
+	_, _, _ = store.Do(context.Background(), "first", "one", func() Result {
+		return successResult("message-1")
+	})
+	_, _, _ = store.Do(context.Background(), "second", "two", func() Result {
+		return successResult("message-2")
+	})
+	if len(store.entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(store.entries))
+	}
+
+	now = now.Add(2 * time.Second)
+	var calls int
+	result, outcome, err := store.Do(context.Background(), "second", "two", func() Result {
+		calls++
+		return successResult("message-3")
+	})
+	if err != nil || outcome != OutcomeExecuted || result.Response.MessageID != "message-3" || calls != 1 {
+		t.Fatalf("expired Do = %#v, %q, %v, calls=%d", result, outcome, err, calls)
 	}
 }

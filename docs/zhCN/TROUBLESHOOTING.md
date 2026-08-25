@@ -129,7 +129,9 @@ herald-dingtalk 已配置 `API_KEY`，但请求未携带 `X-API-Key` 或携带�
 
 ### 幂等命中（缓存响应）
 
-当 Herald（或其它客户端）在配置的 TTL 内使用相同的 `Idempotency-Key`（或 body 中的 `idempotency_key`）再次请求时，herald-dingtalk 会直接返回缓存的响应，不再调用钉钉。这是预期行为。
+当 Herald（或其它客户端）在配置的 TTL 内使用相同的 `Idempotency-Key`（或 body 中的 `idempotency_key`）重复提交已经成功的相同请求时，herald-dingtalk 会直接返回缓存响应；相同内容的并发请求也会被合并。失败发送不会长期缓存，可以再次重试。
+
+如果同一 key 被用于不同发送内容，服务返回 `409 idempotency_conflict`；新的逻辑消息应使用新的 key。
 
 ### 日志级别
 

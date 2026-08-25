@@ -92,7 +92,7 @@ http://localhost:8083
 | `channel` | string | 否 | 传入时必须为 `"dingtalk"`；为兼容旧调用，空值仍然接受。 |
 | `to` | string | 是 | 钉钉 **userid**，或（当 `DINGTALK_LOOKUP_MODE=mobile` 时）11 位**手机号**；工作通知为单用户。 |
 | `body` | string | 否 | 消息正文。为空时见下方内容解析规则。 |
-| `idempotency_key` | string | 否 | 幂等键；TTL 内相同 key 返回缓存结果。 |
+| `idempotency_key` | string | 否 | 幂等键，最长 256 字节；TTL 内缓存成功结果。 |
 | `template` | string | 否 | 可选；当前实现未用于内容。 |
 | `params` | object | 否 | 当 `body` 为空且存在 `params.code` 时，内容为「验证码：」+ params.code。 |
 | `locale` | string | 否 | 可选。 |
@@ -134,14 +134,17 @@ http://localhost:8083
 | error_code | HTTP 状态 | 说明 |
 |------------|-----------|------|
 | `unauthorized` | 401 | 已配置 `API_KEY` 但未传或错误的 `X-API-Key`。 |
-| `invalid_request` | 400 | 非法 JSON、不支持的 channel，或 `timeout_seconds` 超出 0–30。 |
+| `invalid_request` | 400 | 非法 JSON、不支持的 channel、幂等键过长，或 `timeout_seconds` 超出 0–30。 |
 | `invalid_destination` | 400 | `to` 为空或未传。 |
+| `idempotency_conflict` | 409 | Header/body 中的 key 不一致，或同一 key 被用于不同发送内容。 |
 | `provider_down` | 503 | 未配置钉钉（未设置 DINGTALK_APP_KEY / DINGTALK_APP_SECRET / DINGTALK_AGENT_ID）。 |
 | `send_failed` | 502 | 钉钉 API 调用失败（如 token 失败、发送失败）。 |
 | `timeout` | 504 | 请求级超时到期，或钉钉请求被取消。 |
 
 ## 幂等
 
-- 发送请求支持通过请求头 `Idempotency-Key` 或 body 字段 `idempotency_key` 做幂等。
-- 在配置的 TTL 内（`IDEMPOTENCY_TTL_SECONDS`，默认 300 秒），相同 key 的重复请求会直接返回缓存的响应（相同的 `ok`、`message_id`、`provider`），不再调用钉钉 API。
-- 缓存在进程内存中，超过 TTL 后 key 失效。
+- 发送请求支持通过请求头 `Idempotency-Key` 或 body 字段 `idempotency_key` 做幂等；两者同时存在时必须一致。
+- 相同 key、相同发送内容的并发请求只执行一次钉钉调用，等待方共享相同结果。
+- 成功结果在 `IDEMPOTENCY_TTL_SECONDS`（默认 300 秒）内缓存。失败结果只共享给当前等待方，不进入缓存，后续请求可以重试。
+- key 与 channel、目标、正文、模板、参数、主题和 locale 绑定；使用同一 key 发送不同内容时返回 HTTP 409。
+- 缓存位于进程内，最多保留 10000 条成功记录，并在后续操作中清理过期项。多副本部署如需跨实例幂等，应使用共享存储。
