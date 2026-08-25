@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/soulteary/herald-dingtalk/internal/observability"
 	"github.com/soulteary/logger-kit"
 )
 
@@ -19,7 +20,7 @@ func RequireAPIKey(expected string, log *logger.Logger) fiber.Handler {
 			return c.Next()
 		}
 
-		log.Warn().Str("client_ip", c.IP()).Msg("request unauthorized: invalid or missing API key")
+		observability.RequestLogger(c, log).Warn().Str("client_ip", c.IP()).Msg("request unauthorized: invalid or missing API key")
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"ok":            false,
 			"error_code":    "unauthorized",

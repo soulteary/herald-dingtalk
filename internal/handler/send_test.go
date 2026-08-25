@@ -103,6 +103,53 @@ func TestSendHandler_EmptyTo(t *testing.T) {
 	}
 }
 
+func TestSendHandler_RejectsUnsupportedMediaType(t *testing.T) {
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
+	app := fiber.New()
+	app.Post("/v1/send", func(c *fiber.Ctx) error {
+		return SendHandler(c, client, idempotency.NewStore(300), logger.New(logger.Config{Level: logger.ErrorLevel}))
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/send", strings.NewReader(`{"to":"user"}`))
+	req.Header.Set("Content-Type", "text/plain")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("status = %d, want 415", resp.StatusCode)
+	}
+}
+
+func TestSendHandler_RejectsUnsafeTokens(t *testing.T) {
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
+	for _, tt := range []struct {
+		name string
+		body string
+	}{
+		{name: "destination whitespace", body: `{"to":" user","body":"hello"}`},
+		{name: "destination too long", body: `{"to":"` + strings.Repeat("x", maxDestinationLength+1) + `","body":"hello"}`},
+		{name: "idempotency whitespace", body: `{"to":"user","body":"hello","idempotency_key":" key"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			app := fiber.New()
+			app.Post("/v1/send", func(c *fiber.Ctx) error {
+				return SendHandler(c, client, idempotency.NewStore(300), logger.New(logger.Config{Level: logger.ErrorLevel}))
+			})
+			req := httptest.NewRequest(http.MethodPost, "/v1/send", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", resp.StatusCode)
+			}
+		})
+	}
+}
+
 func TestSendHandler_RejectsMismatchedIdempotencyKeys(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("DingTalk must not be called for conflicting idempotency keys")

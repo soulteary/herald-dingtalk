@@ -1,6 +1,10 @@
 package router
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -33,7 +37,7 @@ func snapshotConfig(t *testing.T) {
 }
 
 func testLogger() *logger.Logger {
-	return logger.New(logger.Config{Level: logger.ErrorLevel})
+	return logger.New(logger.Config{Level: logger.ErrorLevel, Output: io.Discard})
 }
 
 func TestSetupProtectsV1Routes(t *testing.T) {
@@ -145,7 +149,9 @@ func TestSetupAddsOperationalHeaders(t *testing.T) {
 
 	app := fiber.New()
 	Setup(app, testLogger())
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Request-ID", "caller-request-id")
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -153,10 +159,67 @@ func TestSetupAddsOperationalHeaders(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	if resp.Header.Get("X-Request-ID") == "" {
-		t.Fatal("X-Request-ID must be set")
+	if got := resp.Header.Get("X-Request-ID"); got != "caller-request-id" {
+		t.Fatalf("X-Request-ID = %q, want caller-request-id", got)
 	}
 	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+}
+
+func TestSetupEmitsSafeCorrelatedAccessLog(t *testing.T) {
+	snapshotConfig(t)
+	config.APIKey = "api-key-secret"
+	config.AppKey, config.AppSecret, config.AgentID = "", "", ""
+	config.LookupMode = config.LookupModeNone
+
+	var output bytes.Buffer
+	log := logger.New(logger.Config{Level: logger.DebugLevel, Output: &output})
+	app := fiber.New()
+	Setup(app, log)
+	req := httptest.NewRequest(http.MethodPost, "/v1/send?to=query-recipient-secret", bytes.NewBufferString(`{"to":"body-recipient-secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", "api-key-secret")
+	req.Header.Set("X-Request-ID", "request-123")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+
+	for _, secret := range []string{"api-key-secret", "body-recipient-secret", "query-recipient-secret"} {
+		if bytes.Contains(output.Bytes(), []byte(secret)) {
+			t.Fatalf("access logs exposed %q", secret)
+		}
+	}
+
+	var accessLog map[string]any
+	scanner := bufio.NewScanner(bytes.NewReader(output.Bytes()))
+	for scanner.Scan() {
+		var entry map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+			t.Fatalf("decode log: %v", err)
+		}
+		if entry["message"] == "HTTP request" {
+			accessLog = entry
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if accessLog == nil {
+		t.Fatal("structured access log was not emitted")
+	}
+	if accessLog["method"] != http.MethodPost || accessLog["path"] != "/v1/send" {
+		t.Fatalf("unexpected request fields: %#v", accessLog)
+	}
+	if accessLog["status"] != float64(http.StatusServiceUnavailable) {
+		t.Fatalf("status = %#v, want 503", accessLog["status"])
+	}
+	if accessLog["request_id"] != "request-123" {
+		t.Fatalf("request_id = %#v, want request-123", accessLog["request_id"])
 	}
 }

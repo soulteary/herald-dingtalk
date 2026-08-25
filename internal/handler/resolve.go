@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
+	"github.com/soulteary/herald-dingtalk/internal/observability"
 	"github.com/soulteary/logger-kit"
 )
 
@@ -19,6 +20,14 @@ type ResolveResponse struct {
 // ResolveHandler handles POST /v1/resolve: OAuth2 auth_code -> userid.
 // Optional: useful when Stargate uses DingTalk OAuth2 login link and needs to resolve code to userid.
 func ResolveHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.Logger) error {
+	log = observability.RequestLogger(c, log)
+	if !hasJSONContentType(c) {
+		log.Warn().Msg("resolve unsupported_media_type: application/json required")
+		return c.Status(fiber.StatusUnsupportedMediaType).JSON(fiber.Map{
+			"ok": false, "error_code": "unsupported_media_type", "error_message": "Content-Type must be application/json",
+		})
+	}
+
 	var req ResolveRequest
 	if err := c.BodyParser(&req); err != nil {
 		log.Warn().Err(err).Msg("resolve invalid_request: body parse error")
@@ -26,10 +35,10 @@ func ResolveHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.L
 			"ok": false, "error_code": "invalid_request", "error_message": err.Error(),
 		})
 	}
-	if req.AuthCode == "" {
-		log.Warn().Msg("resolve invalid_request: auth_code is required")
+	if !validBoundedToken(req.AuthCode, maxAuthCodeLength) {
+		log.Warn().Int("auth_code_length", len(req.AuthCode)).Msg("resolve invalid_request: invalid auth_code")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"ok": false, "error_code": "invalid_request", "error_message": "auth_code is required",
+			"ok": false, "error_code": "invalid_request", "error_message": "auth_code must be 1-4096 bytes without surrounding whitespace or control characters",
 		})
 	}
 	if dingtalkClient == nil {

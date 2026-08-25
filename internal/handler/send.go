@@ -13,6 +13,7 @@ import (
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/idempotency"
+	"github.com/soulteary/herald-dingtalk/internal/observability"
 	"github.com/soulteary/logger-kit"
 	"github.com/soulteary/provider-kit"
 )
@@ -37,6 +38,12 @@ type fingerprintPayload struct {
 
 // SendHandler handles POST /v1/send from Herald.
 func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idempotency.Store, log *logger.Logger) error {
+	log = observability.RequestLogger(c, log)
+	if !hasJSONContentType(c) {
+		log.Warn().Msg("send unsupported_media_type: application/json required")
+		return sendError(c, fiber.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json")
+	}
+
 	var req provider.HTTPSendRequest
 	if err := c.BodyParser(&req); err != nil {
 		log.Warn().Err(err).Msg("send invalid_request: body parse error")
@@ -51,9 +58,9 @@ func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idemp
 		log.Warn().Int("timeout_seconds", req.TimeoutSeconds).Msg("send invalid_request: timeout out of range")
 		return sendError(c, fiber.StatusBadRequest, "invalid_request", "timeout_seconds must be between 0 and 30")
 	}
-	if req.To == "" {
-		log.Warn().Msg("send invalid_destination: to is required")
-		return sendError(c, fiber.StatusBadRequest, "invalid_destination", "to is required")
+	if !validBoundedToken(req.To, maxDestinationLength) {
+		log.Warn().Int("destination_length", len(req.To)).Msg("send invalid_destination: invalid to value")
+		return sendError(c, fiber.StatusBadRequest, "invalid_destination", "to must be 1-256 bytes without surrounding whitespace or control characters")
 	}
 
 	headerKey := c.Get("Idempotency-Key")
@@ -67,6 +74,10 @@ func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idemp
 	if len(req.IdempotencyKey) > maxIdempotencyKeyLength {
 		log.Warn().Int("key_length", len(req.IdempotencyKey)).Msg("send invalid_request: idempotency key too long")
 		return sendError(c, fiber.StatusBadRequest, "invalid_request", "idempotency key must not exceed 256 bytes")
+	}
+	if req.IdempotencyKey != "" && !validBoundedToken(req.IdempotencyKey, maxIdempotencyKeyLength) {
+		log.Warn().Msg("send invalid_request: invalid idempotency key")
+		return sendError(c, fiber.StatusBadRequest, "invalid_request", "idempotency key must not contain surrounding whitespace or control characters")
 	}
 
 	requestCtx := context.Context(c.Context())

@@ -1,13 +1,21 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/soulteary/herald-dingtalk/internal/config"
+	"github.com/soulteary/logger-kit"
 )
 
 func TestNewAppEnforcesBodyLimit(t *testing.T) {
@@ -26,5 +34,97 @@ func TestNewAppEnforcesBodyLimit(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "body size exceeds") {
 		t.Fatalf("error = %q, want body size limit error", err)
+	}
+}
+
+func TestListenAddress(t *testing.T) {
+	for _, tt := range []struct{ input, want string }{
+		{input: "8083", want: ":8083"},
+		{input: ":8083", want: ":8083"},
+	} {
+		if got := listenAddress(tt.input); got != tt.want {
+			t.Fatalf("listenAddress(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestServeWaitsForInFlightRequestBeforeShutdown(t *testing.T) {
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	started := make(chan struct{})
+	release := make(chan struct{})
+	app.Get("/slow", func(c *fiber.Ctx) error {
+		close(started)
+		<-release
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	quit := make(chan os.Signal, 1)
+	var logs bytes.Buffer
+	log := logger.New(logger.Config{Level: logger.InfoLevel, Output: &logs})
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- serve(app, listener, quit, time.Second, log) }()
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	requestDone := make(chan error, 1)
+	go func() {
+		resp, requestErr := client.Get("http://" + listener.Addr().String() + "/slow")
+		if requestErr == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusNoContent {
+				requestErr = fmt.Errorf("status = %d, want 204", resp.StatusCode)
+			}
+		}
+		requestDone <- requestErr
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("request did not reach handler")
+	}
+	quit <- syscall.SIGTERM
+	select {
+	case err := <-serveDone:
+		t.Fatalf("serve returned before in-flight request completed: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(release)
+	if err := <-requestDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-serveDone:
+		if err != nil {
+			t.Fatalf("serve: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serve did not stop")
+	}
+	if !strings.Contains(logs.String(), "shutting down") {
+		t.Fatalf("shutdown log missing: %s", logs.String())
+	}
+	if _, err := client.Get("http://" + listener.Addr().String() + "/slow"); err == nil {
+		t.Fatal("listener still accepts requests after shutdown")
+	}
+}
+
+func TestServeReturnsListenerFailure(t *testing.T) {
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	log := logger.New(logger.Config{Level: logger.Disabled, Output: io.Discard})
+	err = serve(app, listener, nil, time.Second, log)
+	if err == nil || !strings.Contains(err.Error(), "serve:") {
+		t.Fatalf("error = %v, want listener serve failure", err)
 	}
 }
