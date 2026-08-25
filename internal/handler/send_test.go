@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,6 +24,12 @@ type waitForCancellationTransport struct{}
 func (waitForCancellationTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	<-req.Context().Done()
 	return nil, req.Context().Err()
+}
+
+type fixedErrorTransport struct{ err error }
+
+func (t fixedErrorTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, t.err
 }
 
 func TestSendHandler_SuccessWithUserid(t *testing.T) {
@@ -100,6 +107,24 @@ func TestSendHandler_EmptyTo(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	if out.ErrorCode != "invalid_destination" {
 		t.Errorf("error_code = %q", out.ErrorCode)
+	}
+}
+
+func TestSendHandler_InvalidJSON(t *testing.T) {
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
+	app := fiber.New()
+	app.Post("/v1/send", func(c *fiber.Ctx) error {
+		return SendHandler(c, client, idempotency.NewStore(300), logger.New(logger.Config{Level: logger.Disabled}))
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/send", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
 }
 
@@ -343,18 +368,12 @@ func TestSendHandler_DoesNotCacheUpstreamFailure(t *testing.T) {
 }
 
 func TestRequestFingerprintIsStableAcrossMapOrder(t *testing.T) {
-	first, err := requestFingerprint(provider.HTTPSendRequest{
+	first := requestFingerprint(provider.HTTPSendRequest{
 		Channel: "dingtalk", To: "user", Params: map[string]string{"a": "1", "b": "2"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := requestFingerprint(provider.HTTPSendRequest{
+	second := requestFingerprint(provider.HTTPSendRequest{
 		Channel: "dingtalk", To: "user", Params: map[string]string{"b": "2", "a": "1"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	if first != second {
 		t.Fatalf("fingerprints differ: %s != %s", first, second)
 	}
@@ -578,5 +597,73 @@ func TestSendHandler_MobileLookupWhenModeMobile(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	if !out.OK || out.MessageID != "888" {
 		t.Errorf("ok=%v message_id=%q", out.OK, out.MessageID)
+	}
+}
+
+func TestSendOnceResolvesFallbackContent(t *testing.T) {
+	originalLookupMode := config.LookupMode
+	config.LookupMode = config.LookupModeNone
+	t.Cleanup(func() { config.LookupMode = originalLookupMode })
+
+	for _, tt := range []struct {
+		name    string
+		params  map[string]string
+		content string
+	}{
+		{name: "verification code", params: map[string]string{"code": "123456"}, content: "验证码：123456"},
+		{name: "default message", content: "您有一条验证消息，请查看。"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var sentContent string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/gettoken":
+					_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "access_token": "token", "expires_in": 7200})
+				case "/topapi/message/corpconversation/asyncsend_v2":
+					var payload struct {
+						Msg struct {
+							Text struct {
+								Content string `json:"content"`
+							} `json:"text"`
+						} `json:"msg"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+						t.Errorf("decode request: %v", err)
+					}
+					sentContent = payload.Msg.Text.Content
+					_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "task_id": 1})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
+			result := sendOnce(context.Background(), provider.HTTPSendRequest{To: "user", Params: tt.params}, client, logger.New(logger.Config{Level: logger.Disabled}))
+			if !result.Response.OK || sentContent != tt.content {
+				t.Fatalf("result OK=%v content=%q, want %q", result.Response.OK, sentContent, tt.content)
+			}
+		})
+	}
+}
+
+func TestSendOnceMapsMobileLookupErrors(t *testing.T) {
+	originalLookupMode := config.LookupMode
+	config.LookupMode = config.LookupModeMobile
+	t.Cleanup(func() { config.LookupMode = originalLookupMode })
+	log := logger.New(logger.Config{Level: logger.Disabled})
+	req := provider.HTTPSendRequest{To: "13800138000", Body: "hello"}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: fixedErrorTransport{err: context.Canceled}})
+	result := sendOnce(canceled, req, client, log)
+	if result.StatusCode != http.StatusGatewayTimeout || result.Response.ErrorCode != "timeout" {
+		t.Fatalf("canceled lookup result = %#v", result)
+	}
+
+	client = dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: fixedErrorTransport{err: errors.New("lookup failed")}})
+	result = sendOnce(context.Background(), req, client, log)
+	if result.StatusCode != http.StatusBadRequest || result.Response.ErrorCode != "invalid_destination" {
+		t.Fatalf("failed lookup result = %#v", result)
 	}
 }

@@ -119,7 +119,7 @@ go tool cover -func=coverage.out
 go tool cover -html=coverage.out
 ```
 
-Coverage includes configuration validation, idempotency and concurrency behavior, DingTalk HTTP flows (including mobile lookup), handlers, authentication middleware, readiness, and operational response headers. CI enforces a 75% total statement coverage floor. Lint: `golangci-lint run`.
+Coverage includes configuration validation, idempotency and concurrency behavior, DingTalk success and failure responses, request handlers, authentication, routing, observability, and graceful shutdown. CI enforces a 90% total statement coverage floor. Lint: `golangci-lint run`.
 
 ## Operation
 

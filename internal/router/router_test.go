@@ -223,3 +223,43 @@ func TestSetupEmitsSafeCorrelatedAccessLog(t *testing.T) {
 		t.Fatalf("request_id = %#v, want request-123", accessLog["request_id"])
 	}
 }
+
+func TestSetupRoutesConfiguredRequestsToHandlers(t *testing.T) {
+	snapshotConfig(t)
+	config.APIKey = ""
+	config.AppKey, config.AppSecret, config.AgentID = "key", "secret", "1"
+	config.LookupMode = config.LookupModeNone
+
+	app := fiber.New()
+	Setup(app, testLogger())
+	for _, path := range []string{"/v1/send", "/v1/resolve"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString("not-json"))
+		req.Header.Set("Content-Type", "text/plain")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnsupportedMediaType {
+			t.Fatalf("POST %s status = %d, want 415", path, resp.StatusCode)
+		}
+	}
+}
+
+func TestSetupReturnsProviderDownForResolve(t *testing.T) {
+	snapshotConfig(t)
+	config.APIKey = ""
+	config.AppKey, config.AppSecret, config.AgentID = "", "", ""
+	config.LookupMode = config.LookupModeNone
+
+	app := fiber.New()
+	Setup(app, testLogger())
+	resp, err := app.Test(httptest.NewRequest(http.MethodPost, "/v1/resolve", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+}

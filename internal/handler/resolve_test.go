@@ -147,3 +147,43 @@ func TestResolveHandler_RejectsUnsafeAuthCode(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveHandler_ProviderDown(t *testing.T) {
+	app := fiber.New()
+	app.Post("/v1/resolve", func(c *fiber.Ctx) error {
+		return ResolveHandler(c, nil, logger.New(logger.Config{Level: logger.Disabled}))
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/resolve", bytes.NewBufferString(`{"auth_code":"code"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+}
+
+func TestResolveHandler_MapsOAuthFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "expired code"})
+	}))
+	defer server.Close()
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	app := fiber.New()
+	app.Post("/v1/resolve", func(c *fiber.Ctx) error {
+		return ResolveHandler(c, client, logger.New(logger.Config{Level: logger.Disabled}))
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/resolve", bytes.NewBufferString(`{"auth_code":"code"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}

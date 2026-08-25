@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,17 @@ import (
 type redirectTransport struct {
 	base *httptest.Server
 }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+type failingReadCloser struct{}
+
+func (failingReadCloser) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+func (failingReadCloser) Close() error             { return nil }
 
 func (r *redirectTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	u := *req.URL
@@ -400,7 +412,10 @@ func TestNewClientUsesSafeHTTPDefaults(t *testing.T) {
 	if client.http.CheckRedirect == nil {
 		t.Fatal("redirect policy is not configured")
 	}
-	req := httptest.NewRequest(http.MethodGet, "https://example.com", nil)
+	req, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := client.http.CheckRedirect(req, nil); !errors.Is(err, http.ErrUseLastResponse) {
 		t.Fatalf("redirect error = %v, want http.ErrUseLastResponse", err)
 	}
@@ -410,5 +425,157 @@ func TestHTTPStatusErrorMessage(t *testing.T) {
 	err := (&httpStatusError{operation: "getbymobile", status: http.StatusBadGateway}).Error()
 	if err != "getbymobile: HTTP 502" {
 		t.Fatalf("error = %q", err)
+	}
+}
+
+func TestGetTokenErrorResponses(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "invalid JSON", body: "{", want: "dingtalk gettoken parse"},
+		{name: "API error", body: `{"errcode":123,"errmsg":"denied"}`, want: "errcode=123"},
+		{name: "invalid expiry", body: `{"errcode":0,"access_token":"token","expires_in":0}`, want: "invalid expires_in"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+			client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: &redirectTransport{base: server}})
+			_, err := client.getToken(context.Background())
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetTokenUsesCachedToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/gettoken" {
+			t.Fatal("cached token must avoid refresh")
+		}
+		if got := r.URL.Query().Get("access_token"); got != "cached-token" {
+			t.Errorf("access_token = %q, want cached-token", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "result": map[string]any{"userid": "user"}})
+	}))
+	defer server.Close()
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	client.token = "cached-token"
+	client.expires = time.Now().Add(time.Minute)
+	userid, err := client.GetUserIDByMobile(context.Background(), "13800138000")
+	if err != nil || userid != "user" {
+		t.Fatalf("userid = %q, err = %v", userid, err)
+	}
+}
+
+func TestGetTokenWaiterHonorsCancellation(t *testing.T) {
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{})
+	client.refresh = &tokenRefresh{done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := client.getToken(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
+
+func TestClientDoPropagatesTransportAndReadErrors(t *testing.T) {
+	transportErr := errors.New("transport failed")
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, transportErr
+	})})
+	req, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.do(req, "test"); !errors.Is(err, transportErr) {
+		t.Fatalf("transport error = %v", err)
+	}
+
+	client = NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: failingReadCloser{}, Header: make(http.Header)}, nil
+	})})
+	if _, err := client.do(req, "test"); err == nil || err.Error() != "read failed" {
+		t.Fatalf("read error = %v", err)
+	}
+}
+
+func TestResponseMessageErrorFallbacks(t *testing.T) {
+	if got := responseMessageError("operation", []byte(`{"code":"BadCode"}`), "failed").Error(); got != "operation: failed (code=BadCode)" {
+		t.Fatalf("code error = %q", got)
+	}
+	if got := responseMessageError("operation", []byte("not-json"), "failed").Error(); got != "operation: failed" {
+		t.Fatalf("fallback error = %q", got)
+	}
+	base := errors.New("network down")
+	if got := oauthError("oauth", base); !errors.Is(got, base) {
+		t.Fatalf("oauth error = %v, want wrapped base error", got)
+	}
+}
+
+func TestResolveAuthCodeRejectsMalformedResponses(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		tokenBody string
+		userBody  string
+		want      string
+	}{
+		{name: "token JSON", tokenBody: "{", want: "userAccessToken parse"},
+		{name: "user JSON", tokenBody: `{"accessToken":"token"}`, userBody: "{", want: "users/me parse"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1.0/oauth2/userAccessToken" {
+					_, _ = w.Write([]byte(tt.tokenBody))
+					return
+				}
+				_, _ = w.Write([]byte(tt.userBody))
+			}))
+			defer server.Close()
+			client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: &redirectTransport{base: server}})
+			_, err := client.ResolveAuthCode(context.Background(), "code")
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestSendWorkNotifyRejectsInvalidUser(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gettoken":
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "access_token": "token", "expires_in": 7200})
+		case "/topapi/message/corpconversation/asyncsend_v2":
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "task_id": 1, "invalid_user": "missing-user"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	_, err := client.SendWorkNotify(context.Background(), "missing-user", "hello")
+	if err == nil || !strings.Contains(err.Error(), "invalid_user=missing-user") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestGetUserIDByMobileRejectsMalformedJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/gettoken" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "access_token": "token", "expires_in": 7200})
+			return
+		}
+		_, _ = io.WriteString(w, "{")
+	}))
+	defer server.Close()
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	_, err := client.GetUserIDByMobile(context.Background(), "13800138000")
+	if err == nil || !strings.Contains(err.Error(), "getbymobile parse") {
+		t.Fatalf("error = %v", err)
 	}
 }

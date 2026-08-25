@@ -119,7 +119,7 @@ go tool cover -func=coverage.out
 go tool cover -html=coverage.out
 ```
 
-测试覆盖配置校验、幂等与并发行为、钉钉 HTTP 流程（包括手机号查询）、处理器、鉴权中间件、就绪探针和运维响应头。CI 要求总语句覆盖率不低于 75%。静态检查：`golangci-lint run`。
+测试覆盖配置校验、幂等与并发行为、钉钉成功及异常响应、请求处理器、鉴权、路由、可观测性和优雅关闭。CI 要求总语句覆盖率不低于 90%。静态检查：`golangci-lint run`。
 
 ## 运维
 
