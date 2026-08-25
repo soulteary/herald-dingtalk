@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,6 +18,8 @@ import (
 	"github.com/soulteary/logger-kit"
 	version "github.com/soulteary/version-kit"
 )
+
+const shutdownTimeout = 10 * time.Second
 
 // showBanner displays the startup banner with version
 func showBanner() {
@@ -39,40 +43,65 @@ func newApp() *fiber.App {
 	})
 }
 
-func main() {
-	// Display startup banner
-	showBanner()
+func listenAddress(port string) string {
+	if !strings.HasPrefix(port, ":") {
+		return ":" + port
+	}
+	return port
+}
 
+func run(log *logger.Logger, quit <-chan os.Signal) error {
+	if err := config.Validate(); err != nil {
+		log.Warn().Err(err).Msg("invalid DingTalk configuration; /v1/send and /v1/resolve will return 503")
+	}
+	app := newApp()
+	router.Setup(app, log)
+	listener, err := net.Listen("tcp", listenAddress(config.Port))
+	if err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+	defer func() { _ = listener.Close() }()
+	return serve(app, listener, quit, shutdownTimeout, log)
+}
+
+func serve(app *fiber.App, listener net.Listener, quit <-chan os.Signal, timeout time.Duration, log *logger.Logger) error {
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- app.Listener(listener) }()
+
+	select {
+	case err := <-serveErr:
+		if err != nil {
+			return fmt.Errorf("serve: %w", err)
+		}
+		return fmt.Errorf("serve: server stopped unexpectedly")
+	case <-quit:
+		log.Info().Msg("shutting down")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := app.ShutdownWithContext(ctx); err != nil {
+		return fmt.Errorf("shutdown: %w", err)
+	}
+	if err := <-serveErr; err != nil {
+		return fmt.Errorf("serve after shutdown: %w", err)
+	}
+	return nil
+}
+
+func main() {
+	showBanner()
 	level := logger.ParseLevelFromEnv("LOG_LEVEL", logger.InfoLevel)
 	log := logger.New(logger.Config{
 		Level:          level,
 		ServiceName:    "herald-dingtalk",
 		ServiceVersion: version.Version,
 	})
-
-	port := config.Port
-	if !strings.HasPrefix(port, ":") {
-		port = ":" + port
-	}
-	if err := config.Validate(); err != nil {
-		log.Warn().Err(err).Msg("invalid DingTalk configuration; /v1/send and /v1/resolve will return 503")
-	}
-	app := newApp()
-	router.Setup(app, log)
-
-	go func() {
-		if err := app.Listen(port); err != nil {
-			log.Fatal().Err(err).Msg("listen failed")
-		}
-	}()
-
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	<-quit
-	log.Info().Msg("shutting down")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := app.ShutdownWithContext(ctx); err != nil {
-		log.Warn().Err(err).Msg("shutdown error")
+	defer signal.Stop(quit)
+	if err := run(log, quit); err != nil {
+		log.Error().Err(err).Msg("server stopped")
+		os.Exit(1)
 	}
 }

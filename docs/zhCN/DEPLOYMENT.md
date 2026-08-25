@@ -260,7 +260,7 @@ sequenceDiagram
 - **健康检查**：使用 `GET /healthz` 做存活探测，使用 `GET /readyz` 做就绪探测；内置 Docker 健康检查使用 `/healthz`。
 - **密钥管理**：勿将 `DINGTALK_APP_SECRET`、`API_KEY` 提交到代码库；使用环境变量或密钥管理服务注入。
 - **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出带请求 ID 的结构化 JSON 日志；可按 `request_id` 关联访问日志和业务事件。
-- **优雅关闭**：进程监听 `SIGINT`/`SIGTERM`，会在停止接收新请求后于 10 秒内完成关闭。
+- **优雅关闭**：进程监听 `SIGINT`/`SIGTERM`，停止接收新连接并等待在途请求，超时为 10 秒；监听失败会回传主协程并以非零状态退出。
 - **最小权限**：容器默认使用非特权 `herald` 用户运行。
 - **故障排查**：收不到消息、503、401、invalid_destination、resolve_failed 等见 [故障排查指南](TROUBLESHOOTING.md)。
 
