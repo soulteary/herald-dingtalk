@@ -4,24 +4,31 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 )
 
 const (
-	baseURL       = "https://oapi.dingtalk.com"
-	oauth2BaseURL = "https://api.dingtalk.com"
-	getTokenURL   = baseURL + "/gettoken"
-	sendMsgURL    = baseURL + "/topapi/message/corpconversation/asyncsend_v2"
-	// OAuth2: 授权码换 userAccessToken，再取用户信息得 userid
-	oauth2UserTokenURL = oauth2BaseURL + "/v1.0/oauth2/userAccessToken"
-	oauth2UserMeURL    = oauth2BaseURL + "/v1.0/contact/users/me"
-	getByMobileURL     = baseURL + "/topapi/v2/user/getbymobile"
+	baseURL             = "https://oapi.dingtalk.com"
+	oauth2BaseURL       = "https://api.dingtalk.com"
+	getTokenURL         = baseURL + "/gettoken"
+	sendMsgURL          = baseURL + "/topapi/message/corpconversation/asyncsend_v2"
+	oauth2UserTokenURL  = oauth2BaseURL + "/v1.0/oauth2/userAccessToken"
+	oauth2UserMeURL     = oauth2BaseURL + "/v1.0/contact/users/me"
+	getByMobileURL      = baseURL + "/topapi/v2/user/getbymobile"
+	maxResponseBytes    = int64(1 << 20)
+	invalidTokenCode    = 40014
+	expiredTokenCode    = 42001
+	defaultClientTimeout = 15 * time.Second
 )
+
+var ErrResponseTooLarge = errors.New("dingtalk response exceeds 1 MiB")
 
 type tokenResp struct {
 	ErrCode     int    `json:"errcode"`
@@ -53,7 +60,6 @@ type sendResp struct {
 	InvalidUser string `json:"invalid_user"`
 }
 
-// OAuth2 userAccessToken 请求/响应（api.dingtalk.com）
 type oauth2UserTokenReq struct {
 	ClientID     string `json:"clientId"`
 	ClientSecret string `json:"clientSecret"`
@@ -75,13 +81,42 @@ type oauth2UserMeResp struct {
 	Avatar  string `json:"avatarUrl"`
 }
 
-// getByMobile 响应（oapi）
 type getByMobileResp struct {
 	ErrCode int    `json:"errcode"`
 	ErrMsg  string `json:"errmsg"`
 	Result  struct {
 		UserID string `json:"userid"`
 	} `json:"result"`
+}
+
+type apiError struct {
+	operation string
+	code      int
+	message   string
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("%s: errcode=%d errmsg=%s", e.operation, e.code, e.message)
+}
+
+func (e *apiError) tokenInvalid() bool {
+	return e.code == invalidTokenCode || e.code == expiredTokenCode
+}
+
+type httpStatusError struct {
+	operation string
+	status    int
+	body      []byte
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("%s: HTTP %d", e.operation, e.status)
+}
+
+type tokenRefresh struct {
+	done  chan struct{}
+	token string
+	err   error
 }
 
 // Client calls DingTalk work notification API.
@@ -93,6 +128,7 @@ type Client struct {
 	mu        sync.Mutex
 	token     string
 	expires   time.Time
+	refresh   *tokenRefresh
 }
 
 // NewClient creates a DingTalk API client.
@@ -101,116 +137,153 @@ func NewClient(appKey, appSecret, agentID string) *Client {
 }
 
 // NewClientWithHTTP creates a DingTalk API client with a custom *http.Client (e.g. for tests).
-// If httpClient is nil, a default client with 15s timeout is used.
 func NewClientWithHTTP(appKey, appSecret, agentID string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 15 * time.Second}
+		httpClient = &http.Client{
+			Timeout: defaultClientTimeout,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 	return &Client{
-		appKey:    appKey,
-		appSecret: appSecret,
-		agentID:   agentID,
-		http:      httpClient,
+		appKey: appKey, appSecret: appSecret, agentID: agentID, http: httpClient,
 	}
 }
 
-// getToken returns a valid access token, refreshing if needed.
+// getToken returns a valid access token and coalesces concurrent refreshes.
 func (c *Client) getToken(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	if c.token != "" && time.Now().Before(c.expires) {
-		tok := c.token
+		token := c.token
 		c.mu.Unlock()
-		return tok, nil
+		return token, nil
 	}
+	if c.refresh != nil {
+		active := c.refresh
+		c.mu.Unlock()
+		select {
+		case <-active.done:
+			return active.token, active.err
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	active := &tokenRefresh{done: make(chan struct{})}
+	c.refresh = active
 	c.mu.Unlock()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		fmt.Sprintf("%s?appkey=%s&appsecret=%s", getTokenURL, c.appKey, c.appSecret), nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	var tr tokenResp
-	if err := json.Unmarshal(body, &tr); err != nil {
-		return "", err
-	}
-	if tr.ErrCode != 0 {
-		return "", fmt.Errorf("dingtalk gettoken: errcode=%d errmsg=%s", tr.ErrCode, tr.ErrMsg)
-	}
+	token, expires, err := c.fetchToken(ctx)
 	c.mu.Lock()
-	c.token = tr.AccessToken
-	c.expires = time.Now().Add(time.Duration(tr.ExpiresIn-120) * time.Second)
+	if err == nil {
+		c.token = token
+		c.expires = expires
+	}
+	active.token = token
+	active.err = err
+	c.refresh = nil
+	close(active.done)
 	c.mu.Unlock()
-	return tr.AccessToken, nil
+	return token, err
+}
+
+func (c *Client) fetchToken(ctx context.Context) (string, time.Time, error) {
+	query := url.Values{}
+	query.Set("appkey", c.appKey)
+	query.Set("appsecret", c.appSecret)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, getTokenURL+"?"+query.Encode(), nil)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	body, err := c.do(req, "dingtalk gettoken")
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	var response tokenResp
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", time.Time{}, fmt.Errorf("dingtalk gettoken parse: %w", err)
+	}
+	if response.ErrCode != 0 {
+		return "", time.Time{}, &apiError{operation: "dingtalk gettoken", code: response.ErrCode, message: response.ErrMsg}
+	}
+	if response.AccessToken == "" {
+		return "", time.Time{}, errors.New("dingtalk gettoken: empty access_token")
+	}
+	if response.ExpiresIn <= 0 {
+		return "", time.Time{}, errors.New("dingtalk gettoken: invalid expires_in")
+	}
+	lifetime := time.Duration(response.ExpiresIn) * time.Second
+	skew := lifetime / 10
+	if skew > 120*time.Second {
+		skew = 120 * time.Second
+	}
+	return response.AccessToken, time.Now().Add(lifetime - skew), nil
 }
 
 // SendWorkNotify sends a text work notification to the given userid.
-// userid is DingTalk user ID (single user); content is the message body.
-func (c *Client) SendWorkNotify(ctx context.Context, userid, content string) (taskID string, err error) {
-	tok, err := c.getToken(ctx)
+func (c *Client) SendWorkNotify(ctx context.Context, userid, content string) (string, error) {
+	agentID, err := strconv.ParseInt(c.agentID, 10, 64)
+	if err != nil || agentID <= 0 {
+		return "", fmt.Errorf("invalid DingTalk agent ID %q", c.agentID)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		token, err := c.getToken(ctx)
+		if err != nil {
+			return "", err
+		}
+		taskID, err := c.sendWithToken(ctx, token, agentID, userid, content)
+		var apiErr *apiError
+		if attempt == 0 && errors.As(err, &apiErr) && apiErr.tokenInvalid() {
+			c.invalidateToken(token)
+			continue
+		}
+		return taskID, err
+	}
+	return "", errors.New("dingtalk send: token refresh retry exhausted")
+}
+
+func (c *Client) sendWithToken(ctx context.Context, token string, agentID int64, userid, content string) (string, error) {
+	message := sendReq{
+		AgentID: agentID, UserIDList: userid,
+		Msg: textMsg{MsgType: "text", Text: textBody{Content: content}},
+	}
+	raw, err := json.Marshal(message)
 	if err != nil {
 		return "", err
 	}
-	msg := sendReq{
-		AgentID:    mustParseInt64(c.agentID),
-		UserIDList: userid,
-		Msg: textMsg{
-			MsgType: "text",
-			Text:    textBody{Content: content},
-		},
-	}
-	body, err := json.Marshal(msg)
-	if err != nil {
-		return "", err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sendMsgURL+"?access_token="+tok, bytes.NewReader(body))
+	query := url.Values{}
+	query.Set("access_token", token)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sendMsgURL+"?"+query.Encode(), bytes.NewReader(raw))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
+	body, err := c.do(req, "dingtalk send")
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+	var response sendResp
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("dingtalk send parse: %w", err)
 	}
-	var sr sendResp
-	if err := json.Unmarshal(respBody, &sr); err != nil {
-		return "", err
+	if response.ErrCode != 0 {
+		return "", &apiError{operation: "dingtalk send", code: response.ErrCode, message: response.ErrMsg}
 	}
-	if sr.ErrCode != 0 {
-		return "", fmt.Errorf("dingtalk send: errcode=%d errmsg=%s", sr.ErrCode, sr.ErrMsg)
+	if response.InvalidUser != "" {
+		return "", fmt.Errorf("dingtalk send: invalid_user=%s", response.InvalidUser)
 	}
-	return fmt.Sprintf("%d", sr.TaskID), nil
-}
-
-func mustParseInt64(s string) int64 {
-	var i int64
-	_, _ = fmt.Sscanf(s, "%d", &i)
-	return i
+	if response.TaskID <= 0 {
+		return "", errors.New("dingtalk send: empty task_id")
+	}
+	return strconv.FormatInt(response.TaskID, 10), nil
 }
 
 // ResolveAuthCode exchanges OAuth2 auth_code for userid via userAccessToken + users/me.
-// See: https://open.dingtalk.com/document/orgapp/obtain-identity-credentials
-func (c *Client) ResolveAuthCode(ctx context.Context, code string) (userid string, err error) {
-	body := oauth2UserTokenReq{
-		ClientID:     c.appKey,
-		ClientSecret: c.appSecret,
-		Code:         code,
-		GrantType:    "authorization_code",
+func (c *Client) ResolveAuthCode(ctx context.Context, code string) (string, error) {
+	payload := oauth2UserTokenReq{
+		ClientID: c.appKey, ClientSecret: c.appSecret, Code: code, GrantType: "authorization_code",
 	}
-	raw, err := json.Marshal(body)
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
@@ -219,93 +292,128 @@ func (c *Client) ResolveAuthCode(ctx context.Context, code string) (userid strin
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
+	body, err := c.do(req, "oauth2 userAccessToken")
 	if err != nil {
-		return "", err
+		return "", oauthError("oauth2 userAccessToken", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	var tr oauth2UserTokenResp
-	if err := json.Unmarshal(respBody, &tr); err != nil {
+	var token oauth2UserTokenResp
+	if err := json.Unmarshal(body, &token); err != nil {
 		return "", fmt.Errorf("oauth2 userAccessToken parse: %w", err)
 	}
-	if tr.AccessToken == "" {
-		var errResp struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		}
-		_ = json.Unmarshal(respBody, &errResp)
-		if errResp.Message != "" {
-			return "", fmt.Errorf("oauth2 userAccessToken: %s", errResp.Message)
-		}
-		return "", fmt.Errorf("oauth2 userAccessToken: empty access_token (code=%s)", errResp.Code)
+	if token.AccessToken == "" {
+		return "", responseMessageError("oauth2 userAccessToken", body, "empty access_token")
 	}
-	// GET /v1.0/contact/users/me
-	req2, err := http.NewRequestWithContext(ctx, http.MethodGet, oauth2UserMeURL, nil)
+
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, oauth2UserMeURL, nil)
 	if err != nil {
 		return "", err
 	}
-	req2.Header.Set("x-acs-dingtalk-access-token", tr.AccessToken)
-	resp2, err := c.http.Do(req2)
+	req.Header.Set("x-acs-dingtalk-access-token", token.AccessToken)
+	body, err = c.do(req, "oauth2 users/me")
 	if err != nil {
-		return "", err
+		return "", oauthError("oauth2 users/me", err)
 	}
-	defer func() { _ = resp2.Body.Close() }()
-	meBody, err := io.ReadAll(resp2.Body)
-	if err != nil {
-		return "", err
-	}
-	var me oauth2UserMeResp
-	if err := json.Unmarshal(meBody, &me); err != nil {
+	var user oauth2UserMeResp
+	if err := json.Unmarshal(body, &user); err != nil {
 		return "", fmt.Errorf("oauth2 users/me parse: %w", err)
 	}
-	if me.UserID == "" {
-		var errResp struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		}
-		_ = json.Unmarshal(meBody, &errResp)
-		if errResp.Message != "" {
-			return "", fmt.Errorf("oauth2 users/me: %s", errResp.Message)
-		}
-		return "", fmt.Errorf("oauth2 users/me: empty userId")
+	if user.UserID == "" {
+		return "", responseMessageError("oauth2 users/me", body, "empty userId")
 	}
-	return me.UserID, nil
+	return user.UserID, nil
 }
 
-// GetUserIDByMobile returns userid for the given mobile using topapi/v2/user/getbymobile.
-// Requires Contact.User.mobile permission. See: https://open.dingtalk.com/document/orgapp-server/query-users-by-phone-number
-func (c *Client) GetUserIDByMobile(ctx context.Context, mobile string) (userid string, err error) {
-	tok, err := c.getToken(ctx)
+// GetUserIDByMobile returns userid for the given mobile.
+func (c *Client) GetUserIDByMobile(ctx context.Context, mobile string) (string, error) {
+	for attempt := 0; attempt < 2; attempt++ {
+		token, err := c.getToken(ctx)
+		if err != nil {
+			return "", err
+		}
+		userid, err := c.getUserIDByMobileWithToken(ctx, token, mobile)
+		var apiErr *apiError
+		if attempt == 0 && errors.As(err, &apiErr) && apiErr.tokenInvalid() {
+			c.invalidateToken(token)
+			continue
+		}
+		return userid, err
+	}
+	return "", errors.New("getbymobile: token refresh retry exhausted")
+}
+
+func (c *Client) getUserIDByMobileWithToken(ctx context.Context, token, mobile string) (string, error) {
+	query := url.Values{}
+	query.Set("access_token", token)
+	query.Set("mobile", mobile)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, getByMobileURL+"?"+query.Encode(), nil)
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		getByMobileURL+"?access_token="+url.QueryEscape(tok)+"&mobile="+url.QueryEscape(mobile), nil)
+	body, err := c.do(req, "getbymobile")
 	if err != nil {
 		return "", err
 	}
-	resp, err := c.http.Do(req)
+	var response getByMobileResp
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("getbymobile parse: %w", err)
+	}
+	if response.ErrCode != 0 {
+		return "", &apiError{operation: "getbymobile", code: response.ErrCode, message: response.ErrMsg}
+	}
+	if response.Result.UserID == "" {
+		return "", errors.New("getbymobile: no userid for mobile")
+	}
+	return response.Result.UserID, nil
+}
+
+func (c *Client) invalidateToken(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.token == token {
+		c.token = ""
+		c.expires = time.Time{}
+	}
+}
+
+func (c *Client) do(req *http.Request, operation string) ([]byte, error) {
+	response, err := c.http.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
+	defer func() { _ = response.Body.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	var gr getByMobileResp
-	if err := json.Unmarshal(body, &gr); err != nil {
-		return "", err
+	if int64(len(body)) > maxResponseBytes {
+		return nil, ErrResponseTooLarge
 	}
-	if gr.ErrCode != 0 {
-		return "", fmt.Errorf("getbymobile: errcode=%d errmsg=%s", gr.ErrCode, gr.ErrMsg)
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, &httpStatusError{operation: operation, status: response.StatusCode, body: body}
 	}
-	if gr.Result.UserID == "" {
-		return "", fmt.Errorf("getbymobile: no userid for mobile")
+	return body, nil
+}
+
+func oauthError(operation string, err error) error {
+	var statusErr *httpStatusError
+	if errors.As(err, &statusErr) {
+		return responseMessageError(operation, statusErr.body, fmt.Sprintf("HTTP %d", statusErr.status))
 	}
-	return gr.Result.UserID, nil
+	return fmt.Errorf("%s: %w", operation, err)
+}
+
+func responseMessageError(operation string, body []byte, fallback string) error {
+	var response struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(body, &response)
+	if response.Message != "" {
+		return fmt.Errorf("%s: %s", operation, response.Message)
+	}
+	if response.Code != "" {
+		return fmt.Errorf("%s: %s (code=%s)", operation, fallback, response.Code)
+	}
+	return fmt.Errorf("%s: %s", operation, fallback)
 }

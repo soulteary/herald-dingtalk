@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,6 +15,7 @@ import (
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/idempotency"
 	"github.com/soulteary/logger-kit"
+	"github.com/soulteary/provider-kit"
 )
 
 type waitForCancellationTransport struct{}
@@ -97,6 +100,216 @@ func TestSendHandler_EmptyTo(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	if out.ErrorCode != "invalid_destination" {
 		t.Errorf("error_code = %q", out.ErrorCode)
+	}
+}
+
+func TestSendHandler_RejectsMismatchedIdempotencyKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("DingTalk must not be called for conflicting idempotency keys")
+	}))
+	defer server.Close()
+
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	app := fiber.New()
+	store := idempotency.NewStore(300)
+	log := logger.New(logger.Config{Level: logger.ErrorLevel})
+	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+
+	body := bytes.NewBufferString(`{"to":"userid123","body":"hello","idempotency_key":"body-key"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "header-key")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.StatusCode)
+	}
+	var out struct {
+		ErrorCode string `json:"error_code"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if out.ErrorCode != "idempotency_conflict" {
+		t.Fatalf("error_code = %q", out.ErrorCode)
+	}
+}
+
+func TestSendHandler_RejectsOversizedIdempotencyKey(t *testing.T) {
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
+	app := fiber.New()
+	store := idempotency.NewStore(300)
+	log := logger.New(logger.Config{Level: logger.ErrorLevel})
+	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+
+	body := bytes.NewBufferString(`{"to":"userid123","body":"hello"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", strings.Repeat("x", maxIdempotencyKeyLength+1))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestSendHandler_CachesSuccessfulIdempotentResponse(t *testing.T) {
+	var sendCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gettoken":
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "access_token": "token", "expires_in": 7200})
+		case "/topapi/message/corpconversation/asyncsend_v2":
+			sendCalls.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "task_id": 777})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	app := fiber.New()
+	store := idempotency.NewStore(300)
+	log := logger.New(logger.Config{Level: logger.ErrorLevel})
+	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+
+	for i := 0; i < 2; i++ {
+		body := bytes.NewBufferString(`{"to":"userid123","body":"hello","idempotency_key":"same-key"}`)
+		req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		var out struct {
+			MessageID string `json:"message_id"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		_ = resp.Body.Close()
+		if out.MessageID != "777" {
+			t.Fatalf("message_id = %q", out.MessageID)
+		}
+	}
+	if sendCalls.Load() != 1 {
+		t.Fatalf("send calls = %d, want 1", sendCalls.Load())
+	}
+}
+
+func TestSendHandler_RejectsIdempotencyKeyReuseWithDifferentRequest(t *testing.T) {
+	var sendCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gettoken":
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "access_token": "token", "expires_in": 7200})
+		case "/topapi/message/corpconversation/asyncsend_v2":
+			sendCalls.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "task_id": 777})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	app := fiber.New()
+	store := idempotency.NewStore(300)
+	log := logger.New(logger.Config{Level: logger.ErrorLevel})
+	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+
+	for i, message := range []string{"first", "second"} {
+		body := bytes.NewBufferString(`{"to":"userid123","body":"` + message + `","idempotency_key":"same-key"}`)
+		req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
+		want := http.StatusOK
+		if i == 1 {
+			want = http.StatusConflict
+		}
+		if resp.StatusCode != want {
+			_ = resp.Body.Close()
+			t.Fatalf("request %d status = %d, want %d", i, resp.StatusCode, want)
+		}
+		_ = resp.Body.Close()
+	}
+	if sendCalls.Load() != 1 {
+		t.Fatalf("send calls = %d, want 1", sendCalls.Load())
+	}
+}
+
+func TestSendHandler_DoesNotCacheUpstreamFailure(t *testing.T) {
+	var sendCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gettoken":
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "access_token": "token", "expires_in": 7200})
+		case "/topapi/message/corpconversation/asyncsend_v2":
+			if sendCalls.Add(1) == 1 {
+				_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 500, "errmsg": "temporary failure"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "task_id": 888})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	app := fiber.New()
+	store := idempotency.NewStore(300)
+	log := logger.New(logger.Config{Level: logger.ErrorLevel})
+	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+
+	for i := 0; i < 2; i++ {
+		body := bytes.NewBufferString(`{"to":"userid123","body":"hello","idempotency_key":"retry-key"}`)
+		req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
+		want := http.StatusBadGateway
+		if i == 1 {
+			want = http.StatusOK
+		}
+		if resp.StatusCode != want {
+			_ = resp.Body.Close()
+			t.Fatalf("request %d status = %d, want %d", i, resp.StatusCode, want)
+		}
+		_ = resp.Body.Close()
+	}
+	if sendCalls.Load() != 2 {
+		t.Fatalf("send calls = %d, want 2", sendCalls.Load())
+	}
+}
+
+func TestRequestFingerprintIsStableAcrossMapOrder(t *testing.T) {
+	first, err := requestFingerprint(provider.HTTPSendRequest{
+		Channel: "dingtalk", To: "user", Params: map[string]string{"a": "1", "b": "2"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := requestFingerprint(provider.HTTPSendRequest{
+		Channel: "dingtalk", To: "user", Params: map[string]string{"b": "2", "a": "1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("fingerprints differ: %s != %s", first, second)
 	}
 }
 

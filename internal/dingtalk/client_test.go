@@ -3,9 +3,14 @@ package dingtalk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // redirectTransport forwards all requests to the given server (for testing).
@@ -207,11 +212,179 @@ func TestGetUserIDByMobile_EmptyUserid(t *testing.T) {
 	}
 }
 
-func TestMustParseInt64(t *testing.T) {
-	if got := mustParseInt64("123"); got != 123 {
-		t.Errorf("mustParseInt64(123) = %d, want 123", got)
+func TestSendWorkNotify_InvalidAgentID(t *testing.T) {
+	client := NewClientWithHTTP("key", "secret", "not-a-number", &http.Client{})
+	_, err := client.SendWorkNotify(context.Background(), "user", "hello")
+	if err == nil || !strings.Contains(err.Error(), "invalid DingTalk agent ID") {
+		t.Fatalf("err = %v, want invalid agent ID", err)
 	}
-	if got := mustParseInt64("0"); got != 0 {
-		t.Errorf("mustParseInt64(0) = %d", got)
+}
+
+func TestSendWorkNotify_RefreshesRejectedTokenOnce(t *testing.T) {
+	var tokenCalls atomic.Int32
+	var sendCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gettoken":
+			call := tokenCalls.Add(1)
+			token := "old-token"
+			if call == 2 {
+				token = "new-token"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"errcode": 0, "access_token": token, "expires_in": 7200,
+			})
+		case "/topapi/message/corpconversation/asyncsend_v2":
+			sendCalls.Add(1)
+			if r.URL.Query().Get("access_token") == "old-token" {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"errcode": invalidTokenCode, "errmsg": "invalid token",
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "task_id": 123})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{
+		Transport: &redirectTransport{base: server},
+	})
+	taskID, err := client.SendWorkNotify(context.Background(), "user", "hello")
+	if err != nil {
+		t.Fatalf("SendWorkNotify: %v", err)
+	}
+	if taskID != "123" || tokenCalls.Load() != 2 || sendCalls.Load() != 2 {
+		t.Fatalf("taskID=%q tokenCalls=%d sendCalls=%d", taskID, tokenCalls.Load(), sendCalls.Load())
+	}
+}
+
+func TestGetToken_CoalescesConcurrentRefresh(t *testing.T) {
+	var tokenCalls atomic.Int32
+	tokenStarted := make(chan struct{})
+	releaseToken := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gettoken":
+			if tokenCalls.Add(1) == 1 {
+				close(tokenStarted)
+			}
+			<-releaseToken
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"errcode": 0, "access_token": "shared-token", "expires_in": 7200,
+			})
+		case "/topapi/v2/user/getbymobile":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"errcode": 0, "result": map[string]any{"userid": "user"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{
+		Transport: &redirectTransport{base: server},
+	})
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := client.GetUserIDByMobile(context.Background(), "13800138000")
+			errs <- err
+		}()
+	}
+	<-tokenStarted
+	time.Sleep(20 * time.Millisecond)
+	close(releaseToken)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("GetUserIDByMobile: %v", err)
+		}
+	}
+	if tokenCalls.Load() != 1 {
+		t.Fatalf("token calls = %d, want 1", tokenCalls.Load())
+	}
+}
+
+func TestClientRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", int(maxResponseBytes)+1)))
+	}))
+	defer server.Close()
+
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{
+		Transport: &redirectTransport{base: server},
+	})
+	_, err := client.GetUserIDByMobile(context.Background(), "13800138000")
+	if !errors.Is(err, ErrResponseTooLarge) {
+		t.Fatalf("err = %v, want ErrResponseTooLarge", err)
+	}
+}
+
+func TestClientRejectsNon2xxResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("bad gateway"))
+	}))
+	defer server.Close()
+
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{
+		Transport: &redirectTransport{base: server},
+	})
+	_, err := client.GetUserIDByMobile(context.Background(), "13800138000")
+	var statusErr *httpStatusError
+	if !errors.As(err, &statusErr) || statusErr.status != http.StatusBadGateway {
+		t.Fatalf("err = %v, want HTTP 502 status error", err)
+	}
+}
+
+func TestGetTokenValidatesRequiredFieldsAndEncodesCredentials(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("appsecret") != "secret+with&symbols" {
+			t.Errorf("appsecret = %q", r.URL.Query().Get("appsecret"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"errcode": 0, "access_token": "", "expires_in": 0,
+		})
+	}))
+	defer server.Close()
+
+	client := NewClientWithHTTP("key", "secret+with&symbols", "1", &http.Client{
+		Transport: &redirectTransport{base: server},
+	})
+	_, err := client.GetUserIDByMobile(context.Background(), "13800138000")
+	if err == nil || err.Error() != "dingtalk gettoken: empty access_token" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSendWorkNotifyRejectsEmptyTaskID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gettoken":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"errcode": 0, "access_token": "token", "expires_in": 7200,
+			})
+		case "/topapi/message/corpconversation/asyncsend_v2":
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "task_id": 0})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{
+		Transport: &redirectTransport{base: server},
+	})
+	_, err := client.SendWorkNotify(context.Background(), "user", "hello")
+	if err == nil || err.Error() != "dingtalk send: empty task_id" {
+		t.Fatalf("err = %v", err)
 	}
 }

@@ -176,7 +176,7 @@ services:
 | `DINGTALK_AGENT_ID` | 工作通知使用的 AgentID | （空） | 是（发送/解析时） |
 | `DINGTALK_LOOKUP_MODE` | `none`：`to` 仅支持 userid；`mobile`：`to` 支持 userid 或 11 位手机号（需申请 Contact.User.mobile 权限） | `none` | 否 |
 | `LOG_LEVEL` | 日志级别：trace / debug / info / warn / error | `info` | 否 |
-| `IDEMPOTENCY_TTL_SECONDS` | 幂等缓存 TTL（秒），相同 Idempotency-Key 在此时间内返回缓存结果 | `300` | 否 |
+| `IDEMPOTENCY_TTL_SECONDS` | 成功发送结果的幂等缓存 TTL（秒） | `300` | 否 |
 
 当 `DINGTALK_APP_KEY`、`DINGTALK_APP_SECRET`、`DINGTALK_AGENT_ID` 任一未设置时，`POST /v1/send` 与 `POST /v1/resolve` 会返回 **503**，`error_code` 为 `provider_down`。服务仍会正常启动并响应 `GET /healthz`。
 

@@ -14,7 +14,7 @@ DingTalk notification adapter for [Herald](https://github.com/soulteary/herald).
 
 - **Herald HTTP Provider contract**: Implements the same HTTP send contract as Herald's external provider; request/response align with [provider-kit](https://github.com/soulteary/provider-kit) `HTTPSendRequest` / `HTTPSendResponse`.
 - **Optional API Key auth**: When `API_KEY` is set, Herald must send `X-API-Key`; otherwise no auth required.
-- **Idempotency**: Supports `Idempotency-Key` (or body `idempotency_key`); same key within TTL returns cached result without calling DingTalk again.
+- **Idempotency**: Coalesces concurrent requests with the same key and caches successful results within the TTL. Reusing a key with different send content returns `409 idempotency_conflict`.
 - **Graceful shutdown**: On `SIGINT` or `SIGTERM`, server stops accepting new requests and shuts down with a 10s timeout.
 
 ## Architecture
@@ -121,6 +121,7 @@ Current coverage: `internal/config` (ValidWith, LookupMode constants), `internal
 
 - **Graceful shutdown**: On `SIGINT` or `SIGTERM`, the server stops accepting new requests and shuts down with a 10s timeout. Logs `"shutting down"` and any shutdown error.
 - **Logging**: Structured JSON logs via [logger-kit](https://github.com/soulteary/logger-kit). Key events: send ok (to, message_id), send_failed (err, to), resolve ok (userid), resolve_failed, unauthorized, invalid_destination, idempotent hit (debug), 503 provider_down. Set `LOG_LEVEL` to `debug` for idempotent hits.
+- **DingTalk client safeguards**: Concurrent token refreshes are coalesced, an explicitly rejected token is refreshed once, non-2xx responses are rejected, and response bodies are limited to 1 MiB.
 
 ## License
 
