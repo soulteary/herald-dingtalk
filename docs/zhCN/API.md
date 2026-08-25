@@ -38,6 +38,8 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 
 超过 `MAX_REQUEST_BODY_BYTES`（默认 64 KiB）的请求会返回 HTTP `413 Request Entity Too Large`。
 
+每个进程最多同时处理 `MAX_CONCURRENT_REQUESTS` 个 `/v1` 请求（默认 32）。超限请求返回 HTTP `429`、`error_code: "rate_limited"` 和 `Retry-After: 1`。设置为 `0` 可禁用此限制。
+
 ### 解析 OAuth2 授权码（可选）
 
 **POST /v1/resolve**

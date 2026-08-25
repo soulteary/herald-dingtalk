@@ -151,6 +151,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - IDEMPOTENCY_TTL_SECONDS=${IDEMPOTENCY_TTL_SECONDS:-300}
       - MAX_REQUEST_BODY_BYTES=${MAX_REQUEST_BODY_BYTES:-65536}
+      - MAX_CONCURRENT_REQUESTS=${MAX_CONCURRENT_REQUESTS:-32}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8083/healthz"]
@@ -179,6 +180,7 @@ services:
 | `LOG_LEVEL` | 日志级别：trace / debug / info / warn / error | `info` | 否 |
 | `IDEMPOTENCY_TTL_SECONDS` | 成功发送结果的幂等缓存 TTL（秒） | `300` | 否 |
 | `MAX_REQUEST_BODY_BYTES` | HTTP 请求体上限；非正数或超过 1 MiB 时回退到默认值 | `65536` | 否 |
+| `MAX_CONCURRENT_REQUESTS` | 每个进程允许的 `/v1` 并发请求上限；超限返回 `429` 和 `Retry-After: 1`；`0` 表示禁用 | `32` | 否 |
 
 当凭证缺失或包含首尾空白、`DINGTALK_AGENT_ID` 不是正整数，或 `DINGTALK_LOOKUP_MODE` 不受支持时，`POST /v1/send` 与 `POST /v1/resolve` 会返回 **503**，`error_code` 为 `provider_down`。启动警告只指出无效变量，不输出凭证值；服务仍会响应 `GET /healthz`。
 

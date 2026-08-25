@@ -82,6 +82,8 @@ Check whether the service has a semantically valid DingTalk configuration. It re
 
 Requests larger than `MAX_REQUEST_BODY_BYTES` (64 KiB by default) are rejected with HTTP `413 Request Entity Too Large`.
 
+Each process accepts up to `MAX_CONCURRENT_REQUESTS` in-flight `/v1` requests (32 by default). Excess requests receive HTTP `429`, `error_code: "rate_limited"`, and `Retry-After: 1`. Set the value to `0` to disable this limit.
+
 ### Send (DingTalk Work Notification)
 
 **POST /v1/send**

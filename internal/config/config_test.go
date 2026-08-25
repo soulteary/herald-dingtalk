@@ -121,3 +121,26 @@ func TestEffectiveMaxRequestBodyBytes(t *testing.T) {
 		})
 	}
 }
+
+func TestEffectiveMaxConcurrentRequests(t *testing.T) {
+	original := MaxConcurrentRequests
+	t.Cleanup(func() { MaxConcurrentRequests = original })
+
+	for _, tt := range []struct {
+		name string
+		in   int
+		want int
+	}{
+		{name: "configured", in: 8, want: 8},
+		{name: "disabled", in: 0, want: 0},
+		{name: "negative", in: -1, want: defaultMaxConcurrentRequests},
+		{name: "too large", in: maxConcurrentRequestsLimit + 1, want: defaultMaxConcurrentRequests},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			MaxConcurrentRequests = tt.in
+			if got := EffectiveMaxConcurrentRequests(); got != tt.want {
+				t.Fatalf("EffectiveMaxConcurrentRequests() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

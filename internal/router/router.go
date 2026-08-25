@@ -26,7 +26,11 @@ func Setup(app *fiber.App, log *logger.Logger) {
 	if config.Valid() {
 		dingtalkClient = dingtalk.NewClient(config.AppKey, config.AppSecret, config.AgentID)
 	}
-	v1 := app.Group("/v1", internalmiddleware.RequireAPIKey(config.APIKey, log))
+	v1 := app.Group(
+		"/v1",
+		internalmiddleware.RequireAPIKey(config.APIKey, log),
+		internalmiddleware.LimitConcurrency(config.EffectiveMaxConcurrentRequests()),
+	)
 	v1.Post("/send", func(c *fiber.Ctx) error {
 		if dingtalkClient == nil {
 			log.Warn().Msg("send 503: dingtalk not configured")

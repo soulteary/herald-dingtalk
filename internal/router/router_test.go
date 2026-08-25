@@ -12,6 +12,7 @@ import (
 
 type configSnapshot struct {
 	apiKey, appKey, appSecret, agentID, lookupMode string
+	maxConcurrentRequests                          int
 }
 
 func snapshotConfig(t *testing.T) {
@@ -19,6 +20,7 @@ func snapshotConfig(t *testing.T) {
 	snapshot := configSnapshot{
 		apiKey: config.APIKey, appKey: config.AppKey,
 		appSecret: config.AppSecret, agentID: config.AgentID, lookupMode: config.LookupMode,
+		maxConcurrentRequests: config.MaxConcurrentRequests,
 	}
 	t.Cleanup(func() {
 		config.APIKey = snapshot.apiKey
@@ -26,6 +28,7 @@ func snapshotConfig(t *testing.T) {
 		config.AppSecret = snapshot.appSecret
 		config.AgentID = snapshot.agentID
 		config.LookupMode = snapshot.lookupMode
+		config.MaxConcurrentRequests = snapshot.maxConcurrentRequests
 	})
 }
 
