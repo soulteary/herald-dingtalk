@@ -21,7 +21,7 @@ This document describes security considerations and recommendations for herald-d
 - **HTTPS**: If herald-dingtalk is reachable over the internet or across untrusted networks, put it behind a reverse proxy (e.g. Traefik, nginx) with TLS. Herald should use `https://` for `HERALD_DINGTALK_API_URL` in that case.
 - **Least privilege**: Run the process with a non-root user; in Docker, use a non-root user in the image if possible.
 - **Request boundary**: Request bodies are limited to 64 KiB by default (configurable up to 1 MiB), HTTP reads/writes have timeouts, and panic recovery prevents a single handler panic from terminating the process.
-- **Logging**: Request bodies, headers, recipient identifiers, mobile numbers, user IDs, and OAuth authorization codes are not logged. Operational events, request IDs, message IDs, and error codes remain available for troubleshooting.
+- **Logging**: Structured access logs include method, path, status, latency, client metadata, and request ID. Headers, query strings, request bodies, recipient identifiers, mobile numbers, user IDs, and OAuth authorization codes are not logged. Application events share the request ID for correlation.
 
 ## Summary
 

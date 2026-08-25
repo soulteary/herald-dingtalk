@@ -184,6 +184,8 @@ services:
 
 当凭证缺失或包含首尾空白、`DINGTALK_AGENT_ID` 不是正整数，或 `DINGTALK_LOOKUP_MODE` 不受支持时，`POST /v1/send` 与 `POST /v1/resolve` 会返回 **503**，`error_code` 为 `provider_down`。启动警告只指出无效变量，不输出凭证值；服务仍会响应 `GET /healthz`。
 
+每个请求都会输出结构化访问日志，包含 method、path、status、latency、客户端元数据和 `request_id`。调用方提供的 `X-Request-ID` 会被沿用；否则服务会生成并通过响应头返回。访问日志明确不记录请求头、查询字符串或请求体。
+
 ### 4.2 配置文件
 
 程序不内置 `.env` 加载逻辑。使用环境变量、系统 unit 的 `Environment`/`EnvironmentFile`，或 Docker/Compose 的 `environment`/`env_file` 即可。可参考项目根目录 [.env.example](../../.env.example) 编写 `.env`。
@@ -257,8 +259,8 @@ sequenceDiagram
 
 - **健康检查**：使用 `GET /healthz` 做存活探测，使用 `GET /readyz` 做就绪探测；内置 Docker 健康检查使用 `/healthz`。
 - **密钥管理**：勿将 `DINGTALK_APP_SECRET`、`API_KEY` 提交到代码库；使用环境变量或密钥管理服务注入。
-- **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出结构化 JSON 日志；可按需将 `LOG_LEVEL` 设为 `debug` 排查幂等与请求详情。
-- **优雅关闭**：进程监听 `SIGINT`/`SIGTERM`，会在停止接收新请求后于 10 秒内完成关闭。
+- **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出带请求 ID 的结构化 JSON 日志；可按 `request_id` 关联访问日志和业务事件。
+- **优雅关闭**：进程监听 `SIGINT`/`SIGTERM`，停止接收新连接并等待在途请求，超时为 10 秒；监听失败会回传主协程并以非零状态退出。
 - **最小权限**：容器默认使用非特权 `herald` 用户运行。
 - **故障排查**：收不到消息、503、401、invalid_destination、resolve_failed 等见 [故障排查指南](TROUBLESHOOTING.md)。
 

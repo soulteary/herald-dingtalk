@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
+	"github.com/soulteary/herald-dingtalk/internal/observability"
 	"github.com/soulteary/logger-kit"
 )
 
@@ -19,6 +20,7 @@ type ResolveResponse struct {
 // ResolveHandler handles POST /v1/resolve: OAuth2 auth_code -> userid.
 // Optional: useful when Stargate uses DingTalk OAuth2 login link and needs to resolve code to userid.
 func ResolveHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.Logger) error {
+	log = observability.RequestLogger(c, log)
 	if !hasJSONContentType(c) {
 		log.Warn().Msg("resolve unsupported_media_type: application/json required")
 		return c.Status(fiber.StatusUnsupportedMediaType).JSON(fiber.Map{
