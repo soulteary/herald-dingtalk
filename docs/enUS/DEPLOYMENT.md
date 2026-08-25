@@ -84,6 +84,8 @@ Use `GET /healthz` as the liveness probe and `GET /readyz` as the readiness prob
 
 Every request emits a structured access log with method, path, status, latency, client metadata, and `request_id`. A caller-provided `X-Request-ID` is propagated; otherwise the service generates one and returns it in the response. Headers, query strings, and request bodies are deliberately excluded from access logs.
 
+On `SIGINT` or `SIGTERM`, the listener stops accepting new connections and waits up to 10 seconds for in-flight requests. Listener failures are returned to the main goroutine and cause a non-zero process exit instead of terminating from a background goroutine.
+
 ## Integration with Herald
 
 Herald calls herald-dingtalk over HTTP when the OTP channel is `dingtalk`. Configure Herald with:
