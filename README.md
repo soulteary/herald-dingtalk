@@ -16,6 +16,7 @@ DingTalk notification adapter for [Herald](https://github.com/soulteary/herald).
 - **Optional API Key auth**: When `API_KEY` is set, Herald must send `X-API-Key`; otherwise no auth required.
 - **Idempotency**: Coalesces concurrent requests with the same key and caches successful results within the TTL. Reusing a key with different send content returns `409 idempotency_conflict`.
 - **Graceful shutdown**: On `SIGINT` or `SIGTERM`, server stops accepting new requests and shuts down with a 10s timeout.
+- **Hardened service boundary**: Constant-time API key verification, a bounded request body, HTTP timeouts, request IDs, security headers, and panic recovery.
 
 ## Architecture
 
@@ -48,6 +49,7 @@ sequenceDiagram
   Request: `channel` (must be `dingtalk` when set), `to` (DingTalk **userid**, or 11-digit **mobile** when `DINGTALK_LOOKUP_MODE=mobile`), `body` (or `params.code`), `idempotency_key`, optional `template`/`params`/`locale`/`subject`/`timeout_seconds` (0–30).  
   Response: `{ "ok": true, "message_id": "...", "provider": "dingtalk" }` or `{ "ok": false, "error_code": "...", "error_message": "..." }`.
 - **GET /healthz**: `{ "status": "healthy", "service": "herald-dingtalk" }` (via [health-kit](https://github.com/soulteary/health-kit)).
+- **GET /readyz**: Returns `200` only when all required DingTalk credentials are configured; otherwise returns `503`.
 
 ## Configuration
 
@@ -61,6 +63,7 @@ sequenceDiagram
 | `DINGTALK_LOOKUP_MODE` | `none` = `to` is userid only; `mobile` = `to` can be userid or 11-digit mobile (requires Contact.User.mobile permission) | `none` | No |
 | `LOG_LEVEL` | Log level: trace, debug, info, warn, error | `info` | No |
 | `IDEMPOTENCY_TTL_SECONDS` | Idempotency cache TTL (seconds) | `300` | No |
+| `MAX_REQUEST_BODY_BYTES` | Maximum HTTP request body size; valid range is 1 byte–1 MiB | `65536` | No |
 
 ## Herald side
 
@@ -115,12 +118,15 @@ go tool cover -func=coverage.out
 go tool cover -html=coverage.out
 ```
 
-Current coverage: `internal/config` (ValidWith, LookupMode constants), `internal/idempotency` (NewStore/Get/Set), `internal/dingtalk` (ResolveAuthCode, GetUserIDByMobile, SendWorkNotify via mock HTTP), `internal/handler` (ResolveHandler, SendHandler, mobile regex). Run `DINGTALK_LOOKUP_MODE=mobile go test ./internal/handler/... -run MobileLookup` to exercise mobile lookup. Lint: `golangci-lint run`.
+Coverage includes configuration validation, idempotency and concurrency behavior, DingTalk HTTP flows, handlers, authentication middleware, readiness, and operational response headers. Run `DINGTALK_LOOKUP_MODE=mobile go test ./internal/handler/... -run MobileLookup` to exercise mobile lookup. Lint: `golangci-lint run`.
 
 ## Operation
 
 - **Graceful shutdown**: On `SIGINT` or `SIGTERM`, the server stops accepting new requests and shuts down with a 10s timeout. Logs `"shutting down"` and any shutdown error.
-- **Logging**: Structured JSON logs via [logger-kit](https://github.com/soulteary/logger-kit). Key events: send ok (to, message_id), send_failed (err, to), resolve ok (userid), resolve_failed, unauthorized, invalid_destination, idempotent hit (debug), 503 provider_down. Set `LOG_LEVEL` to `debug` for idempotent hits.
+- **Probes**: Use `/healthz` for liveness and `/readyz` for readiness. Readiness is `503` until DingTalk credentials are configured.
+- **HTTP boundary**: Responses include an `X-Request-ID` and security headers. Bodies default to 64 KiB, reads to 10s, writes to 35s, and idle connections to 60s.
+- **Logging**: Structured JSON logs via [logger-kit](https://github.com/soulteary/logger-kit). Recipient identifiers, mobile numbers, user IDs, OAuth codes, API keys, and request bodies are not logged.
+- **Container**: The runtime image includes a Docker health check and runs as the unprivileged `herald` user.
 - **DingTalk client safeguards**: Concurrent token refreshes are coalesced, an explicitly rejected token is refreshed once, non-2xx responses are rejected, and response bodies are limited to 1 MiB.
 
 ## License

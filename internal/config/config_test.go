@@ -40,3 +40,26 @@ func TestLookupModeConstants(t *testing.T) {
 		t.Logf("LookupMode = %q (from env); expected none or mobile in production", LookupMode)
 	}
 }
+
+func TestEffectiveMaxRequestBodyBytes(t *testing.T) {
+	original := MaxRequestBodyBytes
+	t.Cleanup(func() { MaxRequestBodyBytes = original })
+
+	for _, tt := range []struct {
+		name string
+		in   int
+		want int
+	}{
+		{name: "configured", in: 8192, want: 8192},
+		{name: "zero", in: 0, want: defaultMaxRequestBodyBytes},
+		{name: "negative", in: -1, want: defaultMaxRequestBodyBytes},
+		{name: "too large", in: maxRequestBodyBytesLimit + 1, want: defaultMaxRequestBodyBytes},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			MaxRequestBodyBytes = tt.in
+			if got := EffectiveMaxRequestBodyBytes(); got != tt.want {
+				t.Fatalf("EffectiveMaxRequestBodyBytes() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

@@ -18,7 +18,7 @@ Welcome to the herald-dingtalk documentation. herald-dingtalk is the DingTalk no
   - Base URL and authentication
   - POST /v1/resolve (OAuth2 auth_code → userid, optional)
   - POST /v1/send request/response (to supports userid or mobile per DINGTALK_LOOKUP_MODE)
-  - GET /healthz
+  - GET /healthz and GET /readyz
   - Error codes and HTTP status codes
   - Idempotency
 

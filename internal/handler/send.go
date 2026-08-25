@@ -37,11 +37,6 @@ type fingerprintPayload struct {
 
 // SendHandler handles POST /v1/send from Herald.
 func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idempotency.Store, log *logger.Logger) error {
-	if config.APIKey != "" && c.Get("X-API-Key") != config.APIKey {
-		log.Warn().Str("client_ip", c.IP()).Msg("send unauthorized: invalid or missing API key")
-		return sendError(c, fiber.StatusUnauthorized, "unauthorized", "invalid or missing API key")
-	}
-
 	var req provider.HTTPSendRequest
 	if err := c.BodyParser(&req); err != nil {
 		log.Warn().Err(err).Msg("send invalid_request: body parse error")
@@ -101,7 +96,7 @@ func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idemp
 		return sendError(c, fiber.StatusInternalServerError, "send_failed", "idempotency coordination failed")
 	}
 	if outcome == idempotency.OutcomeCached || outcome == idempotency.OutcomeShared {
-		log.Debug().Str("to", req.To).Str("outcome", string(outcome)).
+		log.Debug().Str("outcome", string(outcome)).
 			Bool("cached_ok", result.Response.OK).Str("message_id", result.Response.MessageID).
 			Msg("send idempotent hit")
 	}
@@ -124,26 +119,26 @@ func sendOnce(ctx context.Context, req provider.HTTPSendRequest, dingtalkClient 
 		resolved, err := dingtalkClient.GetUserIDByMobile(ctx, req.To)
 		if err != nil {
 			if isTimeoutError(err) {
-				log.Warn().Err(err).Str("to", req.To).Msg("send timeout: mobile lookup timed out")
+				log.Warn().Err(err).Msg("send timeout: mobile lookup timed out")
 				return failureResult(fiber.StatusGatewayTimeout, "timeout", "dingtalk request timed out")
 			}
-			log.Warn().Err(err).Str("to", req.To).Msg("send invalid_destination: mobile lookup failed")
+			log.Warn().Err(err).Msg("send invalid_destination: mobile lookup failed")
 			return failureResult(fiber.StatusBadRequest, "invalid_destination", "mobile lookup failed: "+err.Error())
 		}
 		destUserID = resolved
-		log.Debug().Str("mobile", req.To).Str("userid", destUserID).Msg("send: resolved mobile to userid")
+		log.Debug().Msg("send: resolved mobile to userid")
 	}
 
 	taskID, err := dingtalkClient.SendWorkNotify(ctx, destUserID, content)
 	if err != nil {
-		log.Warn().Err(err).Str("to", destUserID).Msg("send_failed: dingtalk API error")
+		log.Warn().Err(err).Msg("send_failed: dingtalk API error")
 		if isTimeoutError(err) {
 			return failureResult(fiber.StatusGatewayTimeout, "timeout", "dingtalk request timed out")
 		}
 		return failureResult(fiber.StatusBadGateway, "send_failed", err.Error())
 	}
 
-	log.Info().Str("to", req.To).Str("message_id", taskID).Msg("send ok")
+	log.Info().Str("message_id", taskID).Msg("send ok")
 	return idempotency.Result{
 		StatusCode: fiber.StatusOK,
 		Response: provider.HTTPSendResponse{

@@ -7,6 +7,7 @@ This document describes security considerations and recommendations for herald-d
 - When `API_KEY` is set, herald-dingtalk requires the `X-API-Key` header to match for **POST /v1/send** and **POST /v1/resolve**. Use a strong, unique value and keep it secret.
 - Herald must be configured with the same value as `HERALD_DINGTALK_API_KEY` so that it sends the key on every request to herald-dingtalk; Stargate or other callers of `/v1/resolve` must also send the same key when `API_KEY` is set.
 - Do not log or expose the API key. Prefer environment variables or a secret manager over config files committed to source control.
+- API key verification hashes both values before a constant-time comparison to avoid simple timing leaks.
 
 ## DingTalk Credentials
 
@@ -19,7 +20,8 @@ This document describes security considerations and recommendations for herald-d
 - **Network**: Run herald-dingtalk in a private network. Only Herald (or your gateway) should call it; do not expose herald-dingtalk directly to the public internet unless behind HTTPS and strict access control.
 - **HTTPS**: If herald-dingtalk is reachable over the internet or across untrusted networks, put it behind a reverse proxy (e.g. Traefik, nginx) with TLS. Herald should use `https://` for `HERALD_DINGTALK_API_URL` in that case.
 - **Least privilege**: Run the process with a non-root user; in Docker, use a non-root user in the image if possible.
-- **Logging**: Avoid logging request bodies or headers that may contain secrets. Structured logs (e.g. `to`, `message_id`, error codes) are sufficient for operations and troubleshooting.
+- **Request boundary**: Request bodies are limited to 64 KiB by default (configurable up to 1 MiB), HTTP reads/writes have timeouts, and panic recovery prevents a single handler panic from terminating the process.
+- **Logging**: Request bodies, headers, recipient identifiers, mobile numbers, user IDs, and OAuth authorization codes are not logged. Operational events, request IDs, message IDs, and error codes remain available for troubleshooting.
 
 ## Summary
 
