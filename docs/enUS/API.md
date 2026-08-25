@@ -34,7 +34,7 @@ Uses DingTalk [OAuth2](https://open.dingtalk.com/document/connection/oauth2-0-au
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `auth_code` | string | Yes | The OAuth2 `code` from DingTalk authorization callback. |
+| `auth_code` | string | Yes | The OAuth2 `code` from DingTalk authorization callback; 1–4096 bytes with no surrounding whitespace or control characters. |
 
 **Response (Success) – HTTP 200:**
 ```json
@@ -56,6 +56,7 @@ Uses DingTalk [OAuth2](https://open.dingtalk.com/document/connection/oauth2-0-au
 | error_code | HTTP status | Description |
 |------------|-------------|-------------|
 | `unauthorized` | 401 | `API_KEY` is set but `X-API-Key` is missing or invalid. |
+| `unsupported_media_type` | 415 | `Content-Type` is not `application/json`. |
 | `invalid_request` | 400 | Body parse error or `auth_code` is empty. |
 | `provider_down` | 503 | DingTalk not configured. |
 | `resolve_failed` | 400 | OAuth2 exchange failed (expired/invalid code, etc.). |
@@ -100,9 +101,9 @@ Send a message to a DingTalk user via the work notification API. Called by Heral
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `channel` | string | No | If present, it must be `"dingtalk"`; empty remains accepted for backward compatibility. |
-| `to` | string | Yes | DingTalk **userid**, or (when `DINGTALK_LOOKUP_MODE=mobile`) an 11-digit **mobile**; single user for work notification. |
+| `to` | string | Yes | DingTalk **userid**, or (when `DINGTALK_LOOKUP_MODE=mobile`) an 11-digit **mobile**; 1–256 bytes with no surrounding whitespace or control characters. |
 | `body` | string | No | Message text. If empty, see content resolution below. |
-| `idempotency_key` | string | No | Idempotency key, at most 256 bytes. Successful results are cached within the TTL. |
+| `idempotency_key` | string | No | Idempotency key, at most 256 bytes with no surrounding whitespace or control characters. Successful results are cached within the TTL. |
 | `template` | string | No | Optional; not used for content in current implementation. |
 | `params` | object | No | If `body` is empty and `params.code` exists, content becomes `"验证码：" + params.code`. |
 | `locale` | string | No | Optional. |
@@ -144,8 +145,9 @@ Send a message to a DingTalk user via the work notification API. Called by Heral
 | error_code | HTTP status | Description |
 |------------|-------------|-------------|
 | `unauthorized` | 401 | `API_KEY` is set but `X-API-Key` is missing or invalid. |
+| `unsupported_media_type` | 415 | `Content-Type` is not `application/json`. |
 | `invalid_request` | 400 | Invalid JSON, unsupported channel, an oversized idempotency key, or `timeout_seconds` outside 0–30. |
-| `invalid_destination` | 400 | `to` is missing or empty. |
+| `invalid_destination` | 400 | `to` is missing, oversized, or contains surrounding whitespace/control characters. |
 | `idempotency_conflict` | 409 | Header/body keys differ, or a key is reused with different send content. |
 | `provider_down` | 503 | DingTalk not configured (DINGTALK_APP_KEY / DINGTALK_APP_SECRET / DINGTALK_AGENT_ID not set). |
 | `send_failed` | 502 | DingTalk API error (e.g. token failure, send failure). |

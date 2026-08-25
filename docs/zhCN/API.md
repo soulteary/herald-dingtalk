@@ -56,7 +56,7 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `auth_code` | string | 是 | 钉钉 OAuth2 授权后回调参数中的 code。 |
+| `auth_code` | string | 是 | 钉钉 OAuth2 授权后回调参数中的 code；1–4096 字节，且不能包含首尾空白或控制字符。 |
 
 **成功响应 – HTTP 200：**
 ```json
@@ -78,6 +78,7 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 | error_code | HTTP 状态 | 说明 |
 |------------|-----------|------|
 | `unauthorized` | 401 | 已配置 `API_KEY` 但未传或错误的 `X-API-Key`。 |
+| `unsupported_media_type` | 415 | `Content-Type` 不是 `application/json`。 |
 | `invalid_request` | 400 | 请求体解析失败或 `auth_code` 为空。 |
 | `provider_down` | 503 | 未配置钉钉凭证。 |
 | `resolve_failed` | 400 | OAuth2 兑换失败（code 过期、无效等）。 |
@@ -100,9 +101,9 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `channel` | string | 否 | 传入时必须为 `"dingtalk"`；为兼容旧调用，空值仍然接受。 |
-| `to` | string | 是 | 钉钉 **userid**，或（当 `DINGTALK_LOOKUP_MODE=mobile` 时）11 位**手机号**；工作通知为单用户。 |
+| `to` | string | 是 | 钉钉 **userid**，或（当 `DINGTALK_LOOKUP_MODE=mobile` 时）11 位**手机号**；1–256 字节，且不能包含首尾空白或控制字符。 |
 | `body` | string | 否 | 消息正文。为空时见下方内容解析规则。 |
-| `idempotency_key` | string | 否 | 幂等键，最长 256 字节；TTL 内缓存成功结果。 |
+| `idempotency_key` | string | 否 | 幂等键，最长 256 字节，且不能包含首尾空白或控制字符；TTL 内缓存成功结果。 |
 | `template` | string | 否 | 可选；当前实现未用于内容。 |
 | `params` | object | 否 | 当 `body` 为空且存在 `params.code` 时，内容为「验证码：」+ params.code。 |
 | `locale` | string | 否 | 可选。 |
@@ -144,8 +145,9 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 | error_code | HTTP 状态 | 说明 |
 |------------|-----------|------|
 | `unauthorized` | 401 | 已配置 `API_KEY` 但未传或错误的 `X-API-Key`。 |
+| `unsupported_media_type` | 415 | `Content-Type` 不是 `application/json`。 |
 | `invalid_request` | 400 | 非法 JSON、不支持的 channel、幂等键过长，或 `timeout_seconds` 超出 0–30。 |
-| `invalid_destination` | 400 | `to` 为空或未传。 |
+| `invalid_destination` | 400 | `to` 缺失、过长，或包含首尾空白/控制字符。 |
 | `idempotency_conflict` | 409 | Header/body 中的 key 不一致，或同一 key 被用于不同发送内容。 |
 | `provider_down` | 503 | 未配置钉钉（未设置 DINGTALK_APP_KEY / DINGTALK_APP_SECRET / DINGTALK_AGENT_ID）。 |
 | `send_failed` | 502 | 钉钉 API 调用失败（如 token 失败、发送失败）。 |

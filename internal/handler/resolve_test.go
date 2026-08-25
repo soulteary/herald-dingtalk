@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -106,5 +107,43 @@ func TestResolveHandler_InvalidJSON(t *testing.T) {
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestResolveHandler_RejectsUnsupportedMediaType(t *testing.T) {
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
+	log := logger.New(logger.Config{Level: logger.ErrorLevel})
+	app := fiber.New()
+	app.Post("/v1/resolve", func(c *fiber.Ctx) error { return ResolveHandler(c, client, log) })
+	req := httptest.NewRequest(http.MethodPost, "/v1/resolve", strings.NewReader(`{"auth_code":"code"}`))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("status = %d, want 415", resp.StatusCode)
+	}
+}
+
+func TestResolveHandler_RejectsUnsafeAuthCode(t *testing.T) {
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
+	for _, code := range []string{" code", strings.Repeat("x", maxAuthCodeLength+1)} {
+		app := fiber.New()
+		app.Post("/v1/resolve", func(c *fiber.Ctx) error {
+			return ResolveHandler(c, client, logger.New(logger.Config{Level: logger.ErrorLevel}))
+		})
+		body, _ := json.Marshal(ResolveRequest{AuthCode: code})
+		req := httptest.NewRequest(http.MethodPost, "/v1/resolve", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", resp.StatusCode)
+		}
 	}
 }
