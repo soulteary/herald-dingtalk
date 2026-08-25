@@ -15,6 +15,13 @@ This document describes security considerations and recommendations for herald-d
 - Store them in environment variables or a secret manager (e.g. Kubernetes Secrets, HashiCorp Vault). Use `.env` only for local development and ensure `.env` is in `.gitignore`.
 - Rotate AppSecret periodically in the DingTalk open platform and update herald-dingtalk configuration accordingly.
 
+## Identity and authorization boundary
+
+- `/v1/resolve` exchanges a DingTalk OAuth2 authorization code for a DingTalk `userid`. That result is a delivery identifier, not proof that the user may access an application or resource.
+- herald-dingtalk does not create application sessions, verify OTP challenges, map enterprise identities to application accounts, or make authorization decisions. Keep those responsibilities in Herald, Warden, Stargate, or the application's user system.
+- `API_KEY` authenticates a calling service to this adapter. It is a shared service credential, not an end-user credential and not a substitute for per-user authorization.
+- Restrict `/v1/resolve` as carefully as `/v1/send`: it accepts short-lived OAuth material and returns an enterprise identifier.
+
 ## Production Recommendations
 
 - **Network**: Run herald-dingtalk in a private network. Only Herald (or your gateway) should call it; do not expose herald-dingtalk directly to the public internet unless behind HTTPS and strict access control.
@@ -22,6 +29,7 @@ This document describes security considerations and recommendations for herald-d
 - **Least privilege**: Run the process with a non-root user; in Docker, use a non-root user in the image if possible.
 - **Request boundary**: Request bodies are limited to 64 KiB by default (configurable up to 1 MiB), HTTP reads/writes have timeouts, and panic recovery prevents a single handler panic from terminating the process.
 - **Logging**: Structured access logs include method, path, status, latency, client metadata, and request ID. Headers, query strings, request bodies, recipient identifiers, mobile numbers, user IDs, and OAuth authorization codes are not logged. Application events share the request ID for correlation.
+- **Operations**: Follow the [operations guide](OPERATIONS.md) for secret injection, probes, rollout verification, and multi-replica idempotency constraints.
 
 ## Summary
 

@@ -29,6 +29,12 @@
   - 钉钉应用准备
   - 模板消息不适用于企业内部应用说明
 
+- **[OPERATIONS.md](OPERATIONS.md)** - 生产运维指南
+  - 生产检查清单与 Kubernetes 参考清单
+  - 上线验证与请求关联
+  - 容量、扩缩容与进程内幂等限制
+  - HTTP 故障分流矩阵
+
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - 故障排查
   - 收不到消息
   - 503 provider_down
@@ -58,8 +64,9 @@
 ### 运维人员
 
 1. 阅读 [DEPLOYMENT.md](DEPLOYMENT.md) 了解部署与 Herald 侧配置
-2. 参考 [SECURITY.md](SECURITY.md) 了解生产实践
-3. 排查问题：[TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+2. 按 [OPERATIONS.md](OPERATIONS.md) 执行上线验证与扩缩容
+3. 参考 [SECURITY.md](SECURITY.md) 了解生产实践和信任边界
+4. 排查问题：[TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
 ## 文档结构
 
@@ -72,12 +79,14 @@ herald-dingtalk/
 │   │   ├── README.md       # 文档索引（英文）
 │   │   ├── API.md          # API 文档（英文）
 │   │   ├── DEPLOYMENT.md   # 部署指南（英文）
+│   │   ├── OPERATIONS.md   # 生产运维指南（英文）
 │   │   ├── TROUBLESHOOTING.md # 故障排查（英文）
 │   │   └── SECURITY.md     # 安全（英文）
 │   └── zhCN/
 │       ├── README.md       # 文档索引（中文，本文件）
 │       ├── API.md          # API 文档（中文）
 │       ├── DEPLOYMENT.md   # 部署指南（中文）
+│       ├── OPERATIONS.md   # 生产运维指南（中文）
 │       ├── TROUBLESHOOTING.md # 故障排查（中文）
 │       └── SECURITY.md     # 安全（中文）
 └── ...
@@ -87,5 +96,6 @@ herald-dingtalk/
 
 - API 端点与认证：[API.md](API.md)
 - 配置与 Herald 集成：[DEPLOYMENT.md](DEPLOYMENT.md)
+- 生产上线与扩缩容：[OPERATIONS.md](OPERATIONS.md)
 - 常见问题：[TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 - 安全：[SECURITY.md](SECURITY.md)

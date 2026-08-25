@@ -29,6 +29,12 @@ Welcome to the herald-dingtalk documentation. herald-dingtalk is the DingTalk no
   - DingTalk app setup
   - Template messages not for enterprise internal apps
 
+- **[OPERATIONS.md](OPERATIONS.md)** - Production operations guide
+  - Production checklist and Kubernetes reference manifest
+  - Rollout verification and request correlation
+  - Capacity, scaling, and process-local idempotency
+  - HTTP error triage matrix
+
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Troubleshooting guide
   - Messages not received
   - 503 provider_down
@@ -58,8 +64,9 @@ Welcome to the herald-dingtalk documentation. herald-dingtalk is the DingTalk no
 ### Operations
 
 1. Read [DEPLOYMENT.md](DEPLOYMENT.md) for deployment and Herald side config
-2. Refer to [SECURITY.md](SECURITY.md) for production practices
-3. Troubleshoot issues: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+2. Apply the rollout and scaling guidance in [OPERATIONS.md](OPERATIONS.md)
+3. Refer to [SECURITY.md](SECURITY.md) for production practices and trust boundaries
+4. Troubleshoot issues: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
 ## Document Structure
 
@@ -72,12 +79,14 @@ herald-dingtalk/
 │   │   ├── README.md       # Documentation index (this file)
 │   │   ├── API.md          # API reference
 │   │   ├── DEPLOYMENT.md   # Deployment guide
+│   │   ├── OPERATIONS.md   # Production operations guide
 │   │   ├── TROUBLESHOOTING.md # Troubleshooting guide
 │   │   └── SECURITY.md     # Security practices
 │   └── zhCN/
 │       ├── README.md       # Documentation index (Chinese)
 │       ├── API.md          # API reference (Chinese)
 │       ├── DEPLOYMENT.md   # Deployment guide (Chinese)
+│       ├── OPERATIONS.md   # Production operations guide (Chinese)
 │       ├── TROUBLESHOOTING.md # Troubleshooting guide (Chinese)
 │       └── SECURITY.md     # Security practices (Chinese)
 └── ...
@@ -87,5 +96,6 @@ herald-dingtalk/
 
 - API endpoints and auth: [API.md](API.md)
 - Configuration and Herald integration: [DEPLOYMENT.md](DEPLOYMENT.md)
+- Production rollout and scaling: [OPERATIONS.md](OPERATIONS.md)
 - Common issues: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 - Security: [SECURITY.md](SECURITY.md)

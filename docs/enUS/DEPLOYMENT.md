@@ -1,5 +1,7 @@
 # herald-dingtalk Deployment Guide
 
+For production rollout, Kubernetes, probes, scaling, and incident triage, also see [OPERATIONS.md](OPERATIONS.md).
+
 ## Quick Start
 
 ### Binary

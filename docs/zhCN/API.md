@@ -16,6 +16,13 @@ http://localhost:8083
 
 API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Request-ID`；调用方提供该请求头时会沿用其值。
 
+## 通用 HTTP 行为
+
+- 超过 `MAX_REQUEST_BODY_BYTES`（默认 64 KiB）的请求会返回 HTTP `413 Request Entity Too Large`。该响应由 HTTP 服务器生成，不使用 Provider 错误结构。
+- 每个进程最多同时处理 `MAX_CONCURRENT_REQUESTS` 个 `/v1` 请求（默认 32）。超限请求返回 HTTP `429`、`error_code: "rate_limited"` 和 `Retry-After: 1`。设置为 `0` 可禁用此限制。
+- JSON 端点要求有效的 `Content-Type: application/json` 媒体类型；允许 `charset=utf-8` 等参数。
+- 使用响应中的 `X-Request-ID` 关联该请求的访问日志和业务事件。请求体、凭证与接收者标识不会写入日志。
+
 ## 端点
 
 ### 健康检查
@@ -35,10 +42,6 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 **GET /readyz**
 
 检查钉钉配置是否具有正确语义。仅当凭证完整且无首尾空白、`DINGTALK_AGENT_ID` 为十进制正整数，并且 `DINGTALK_LOOKUP_MODE` 为 `none` 或 `mobile` 时，才返回 `200` 和 `status: "ready"`；否则返回 `503` 和 `status: "not_ready"`。`/healthz` 用于存活检查，`/readyz` 用于就绪检查。
-
-超过 `MAX_REQUEST_BODY_BYTES`（默认 64 KiB）的请求会返回 HTTP `413 Request Entity Too Large`。
-
-每个进程最多同时处理 `MAX_CONCURRENT_REQUESTS` 个 `/v1` 请求（默认 32）。超限请求返回 HTTP `429`、`error_code: "rate_limited"` 和 `Retry-After: 1`。设置为 `0` 可禁用此限制。
 
 ### 解析 OAuth2 授权码（可选）
 
@@ -78,9 +81,10 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 | error_code | HTTP 状态 | 说明 |
 |------------|-----------|------|
 | `unauthorized` | 401 | 已配置 `API_KEY` 但未传或错误的 `X-API-Key`。 |
+| `rate_limited` | 429 | 当前进程已达到 `MAX_CONCURRENT_REQUESTS`；按 `Retry-After` 指定的秒数等待后重试。 |
 | `unsupported_media_type` | 415 | `Content-Type` 不是 `application/json`。 |
-| `invalid_request` | 400 | 请求体解析失败或 `auth_code` 为空。 |
-| `provider_down` | 503 | 未配置钉钉凭证。 |
+| `invalid_request` | 400 | 请求体解析失败，或 `auth_code` 为空、过长、包含首尾空白/控制字符。 |
+| `provider_down` | 503 | 钉钉凭证或查询模式未通过本地校验。 |
 | `resolve_failed` | 400 | OAuth2 兑换失败（code 过期、无效等）。 |
 
 ---
@@ -145,11 +149,12 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 | error_code | HTTP 状态 | 说明 |
 |------------|-----------|------|
 | `unauthorized` | 401 | 已配置 `API_KEY` 但未传或错误的 `X-API-Key`。 |
+| `rate_limited` | 429 | 当前进程已达到 `MAX_CONCURRENT_REQUESTS`；按 `Retry-After` 指定的秒数等待后重试。 |
 | `unsupported_media_type` | 415 | `Content-Type` 不是 `application/json`。 |
 | `invalid_request` | 400 | 非法 JSON、不支持的 channel、幂等键过长，或 `timeout_seconds` 超出 0–30。 |
 | `invalid_destination` | 400 | `to` 缺失、过长，或包含首尾空白/控制字符。 |
 | `idempotency_conflict` | 409 | Header/body 中的 key 不一致，或同一 key 被用于不同发送内容。 |
-| `provider_down` | 503 | 未配置钉钉（未设置 DINGTALK_APP_KEY / DINGTALK_APP_SECRET / DINGTALK_AGENT_ID）。 |
+| `provider_down` | 503 | 钉钉凭证或查询模式未通过本地校验。 |
 | `send_failed` | 502 | 钉钉 API 调用失败（如 token 失败、发送失败）。 |
 | `timeout` | 504 | 请求级超时到期，或钉钉请求被取消。 |
 
