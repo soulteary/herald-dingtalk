@@ -118,7 +118,7 @@ go tool cover -func=coverage.out
 go tool cover -html=coverage.out
 ```
 
-测试覆盖配置校验、幂等与并发行为、钉钉 HTTP 流程、处理器、鉴权中间件、就绪探针和运维响应头。运行 `DINGTALK_LOOKUP_MODE=mobile go test ./internal/handler/... -run MobileLookup` 可执行手机号查 userid 的用例。静态检查：`golangci-lint run`。
+测试覆盖配置校验、幂等与并发行为、钉钉 HTTP 流程（包括手机号查询）、处理器、鉴权中间件、就绪探针和运维响应头。CI 要求总语句覆盖率不低于 75%。静态检查：`golangci-lint run`。
 
 ## 运维
 

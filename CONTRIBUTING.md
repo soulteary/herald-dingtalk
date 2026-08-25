@@ -5,7 +5,7 @@ Thank you for your interest in contributing to herald-dingtalk.
 ## Development
 
 - **Go version**: 1.26+ (see [go.mod](go.mod)).
-- **Tests**: Run `go test ./...`. Use `go test -cover ./...` for coverage; `go test -coverprofile=coverage.out ./...` then `go tool cover -html=coverage.out` for an HTML report. Tests cover config, idempotency, dingtalk client (ResolveAuthCode, GetUserIDByMobile via mock HTTP), and handlers (resolve, send). For mobile lookup tests, run `DINGTALK_LOOKUP_MODE=mobile go test ./internal/handler/... -run MobileLookup`.
+- **Tests**: Run `go test -count=1 ./...`; use `go test -race ./...` for concurrency checks. Generate coverage with `go test -coverprofile=coverage.out ./...`, then inspect it with `go tool cover -func=coverage.out` or `go tool cover -html=coverage.out`. CI requires total statement coverage of at least 75%. Mobile lookup behavior is exercised automatically without environment-specific test commands.
 - **Code style**: Follow standard Go formatting. Run `gofmt -s -w .` before committing. The CI runs `gofmt -s -l .` and fails if there are unformatted files.
 - **Static analysis**: CI runs `go vet ./...`. Run `golangci-lint run` locally (e.g. errcheck) before submitting.
 
@@ -13,7 +13,7 @@ Thank you for your interest in contributing to herald-dingtalk.
 
 1. Fork the repository and create a branch from `main` (or `master`).
 2. Make your changes; keep commits focused and messages clear.
-3. Ensure tests pass: `go test ./...`.
+3. Ensure tests and race detection pass: `go test -count=1 ./...` and `go test -race ./...`.
 4. Open a Pull Request with a short description of the change and reference any related issues.
 
 ## Documentation

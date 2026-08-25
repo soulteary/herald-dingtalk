@@ -485,10 +485,10 @@ func TestMobileLikeRegex(t *testing.T) {
 }
 
 func TestSendHandler_MobileLookupWhenModeMobile(t *testing.T) {
-	// Only run when DINGTALK_LOOKUP_MODE=mobile so we don't depend on env in other runs
-	if config.LookupMode != config.LookupModeMobile {
-		t.Skip("DINGTALK_LOOKUP_MODE=mobile not set, skipping mobile lookup test")
-	}
+	originalLookupMode := config.LookupMode
+	config.LookupMode = config.LookupModeMobile
+	t.Cleanup(func() { config.LookupMode = originalLookupMode })
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/gettoken":

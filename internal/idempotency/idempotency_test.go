@@ -183,3 +183,50 @@ func TestStoreExpiresAndEvictsEntries(t *testing.T) {
 		t.Fatalf("expired Do = %#v, %q, %v, calls=%d", result, outcome, err, calls)
 	}
 }
+
+func TestStoreUsesSafeDefaults(t *testing.T) {
+	store := newStore(0, 0, nil)
+	if store.ttl != defaultTTLSeconds*time.Second {
+		t.Fatalf("ttl = %s, want %s", store.ttl, defaultTTLSeconds*time.Second)
+	}
+	if store.maxEntries != defaultMaxEntries {
+		t.Fatalf("maxEntries = %d, want %d", store.maxEntries, defaultMaxEntries)
+	}
+	if store.now == nil {
+		t.Fatal("default clock must be configured")
+	}
+}
+
+func TestStoreEmptyKeyBypassesCache(t *testing.T) {
+	store := NewStore(300)
+	var calls int
+	for i := 0; i < 2; i++ {
+		result, outcome, err := store.Do(context.Background(), "", "fingerprint", func() Result {
+			calls++
+			return successResult("message")
+		})
+		if err != nil || outcome != OutcomeExecuted || !result.Response.OK {
+			t.Fatalf("Do = %#v, %q, %v", result, outcome, err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+}
+
+func TestStoreRejectsCanceledContextBeforeExecution(t *testing.T) {
+	store := NewStore(300)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	executed := false
+	_, _, err := store.Do(ctx, "key", "fingerprint", func() Result {
+		executed = true
+		return successResult("message")
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if executed {
+		t.Fatal("operation executed after its context was canceled")
+	}
+}
