@@ -388,3 +388,27 @@ func TestSendWorkNotifyRejectsEmptyTaskID(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestNewClientUsesSafeHTTPDefaults(t *testing.T) {
+	client := NewClient("key", "secret", "1")
+	if client.http == nil {
+		t.Fatal("default HTTP client is nil")
+	}
+	if client.http.Timeout != defaultClientTimeout {
+		t.Fatalf("timeout = %s, want %s", client.http.Timeout, defaultClientTimeout)
+	}
+	if client.http.CheckRedirect == nil {
+		t.Fatal("redirect policy is not configured")
+	}
+	req := httptest.NewRequest(http.MethodGet, "https://example.com", nil)
+	if err := client.http.CheckRedirect(req, nil); !errors.Is(err, http.ErrUseLastResponse) {
+		t.Fatalf("redirect error = %v, want http.ErrUseLastResponse", err)
+	}
+}
+
+func TestHTTPStatusErrorMessage(t *testing.T) {
+	err := (&httpStatusError{operation: "getbymobile", status: http.StatusBadGateway}).Error()
+	if err != "getbymobile: HTTP 502" {
+		t.Fatalf("error = %q", err)
+	}
+}

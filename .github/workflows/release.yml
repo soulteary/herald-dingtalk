@@ -9,6 +9,10 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Release
@@ -41,45 +45,50 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Validate release tag
+        run: |
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+
       - name: Run tests
-        run: go test -v -race ./...
+        run: go test -count=1 -v -race ./...
 
       - name: Extract version information
         id: version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          VERSION=${VERSION#v}
-          COMMIT=$(git rev-parse --short HEAD)
-          BUILD_DATE=$(date -u +%FT%T%z)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
-          echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+          VERSION=${GITHUB_REF_NAME#v}
+          COMMIT=${GITHUB_SHA}
+          BUILD_DATE=$(git show -s --format=%cI HEAD)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
 
       - name: Build multi-platform binaries
         run: |
           mkdir -p dist
           VERSION=${{ steps.version.outputs.version }}
-          COMMIT=${{ github.sha }}
-          BUILD_DATE=$(date +%FT%T%z)
+          COMMIT=${{ steps.version.outputs.commit }}
+          BUILD_DATE=${{ steps.version.outputs.build_date }}
           LDFLAGS="-s -w -X 'github.com/soulteary/version-kit.Version=${VERSION}' -X 'github.com/soulteary/version-kit.Commit=${COMMIT}' -X 'github.com/soulteary/version-kit.BuildDate=${BUILD_DATE}'"
 
           # Build for multiple platforms
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-linux-amd64 ./main.go
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-linux-arm64 ./main.go
-          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-darwin-amd64 ./main.go
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-darwin-arm64 ./main.go
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-windows-amd64.exe ./main.go
-          GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-windows-arm64.exe ./main.go
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-linux-amd64 .
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-linux-arm64 .
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-darwin-amd64 .
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-darwin-arm64 .
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-windows-amd64.exe .
+          GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-windows-arm64.exe .
 
       - name: Generate checksums
         run: |
           cd dist
-          # Exclude checksums.txt itself: `sha256sum *` can sweep the manifest
-          # into its own listing (a self-referential line whose hash never
-          # matches the final file), which later makes `sha256sum -c` report
-          # "checksums.txt: FAILED". Hash every artifact EXCEPT the manifest.
-          sha256sum $(ls | grep -v '^checksums.txt$') > checksums.txt
+          find . -maxdepth 1 -type f ! -name checksums.txt -printf '%f\n' \
+            | LC_ALL=C sort \
+            | xargs sha256sum > checksums.txt
+          sha256sum --check checksums.txt
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -101,7 +110,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -118,6 +127,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
+          provenance: mode=max
+          sbom: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -125,11 +136,8 @@ jobs:
           files: |
             dist/*
           name: Release ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
           body: |
-            ## Changes
-
-            See [CHANGELOG](CHANGELOG.md) for details.
-
             ## Downloads
 
             ### Docker Image
@@ -148,4 +156,4 @@ jobs:
             ### Checksums
             See `checksums.txt` for SHA256 checksums.
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

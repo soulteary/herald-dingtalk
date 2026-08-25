@@ -26,6 +26,22 @@ func TestValidWith(t *testing.T) {
 	}
 }
 
+func TestValidUsesConfiguredCredentials(t *testing.T) {
+	originalAppKey, originalSecret, originalAgentID := AppKey, AppSecret, AgentID
+	t.Cleanup(func() {
+		AppKey, AppSecret, AgentID = originalAppKey, originalSecret, originalAgentID
+	})
+
+	AppKey, AppSecret, AgentID = "key", "secret", "1"
+	if !Valid() {
+		t.Fatal("Valid() = false with complete credentials")
+	}
+	AgentID = ""
+	if Valid() {
+		t.Fatal("Valid() = true with a missing agent ID")
+	}
+}
+
 func TestLookupModeConstants(t *testing.T) {
 	if LookupModeNone != "none" {
 		t.Errorf("LookupModeNone = %q, want none", LookupModeNone)

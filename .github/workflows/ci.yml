@@ -8,6 +8,7 @@ on:
 
 env:
   DOCKER_BUILDKIT: 1
+  MIN_COVERAGE: '75.0'
 
 jobs:
   # Code formatting check
@@ -64,6 +65,8 @@ jobs:
   test:
     name: Code Testing
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -87,7 +90,7 @@ jobs:
         run: go mod download
 
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test -count=1 -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Generate coverage report
         run: go tool cover -html=coverage.out -o coverage.html
@@ -96,19 +99,34 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: coverage-report
-          path: coverage.html
+          path: |
+            coverage.out
+            coverage.html
+          retention-days: 14
 
-      - name: Display coverage summary
-        run: go tool cover -func=coverage.out
+      - name: Enforce coverage threshold
+        run: |
+          go tool cover -func=coverage.out | tee coverage-summary.txt
+          COVERAGE=$(awk '/^total:/ {gsub(/%/, "", $3); print $3}' coverage-summary.txt)
+          echo "Total coverage: ${COVERAGE}% (minimum: ${MIN_COVERAGE}%)"
+          echo "### Test coverage: ${COVERAGE}%" >> "$GITHUB_STEP_SUMMARY"
+          awk -v coverage="$COVERAGE" -v minimum="$MIN_COVERAGE" 'BEGIN {
+            if (coverage + 0 < minimum + 0) {
+              printf "Coverage %.1f%% is below the required %.1f%%\n", coverage, minimum
+              exit 1
+            }
+          }'
 
       - name: Upload coverage reports to Codecov
+        if: env.CODECOV_TOKEN != ''
         uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.out
+          token: ${{ env.CODECOV_TOKEN }}
+          files: ./coverage.out
           flags: unittests
           name: codecov-umbrella
-          fail_ci_if_error: false
+          fail_ci_if_error: true
+          disable_search: true
 
   # Code quality check (using golangci-lint)
   lint:
@@ -170,6 +188,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -178,7 +198,10 @@ jobs:
         id: version
         run: |
           VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev-$(git rev-parse --short HEAD)")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          BUILD_DATE=$(git show -s --format=%cI HEAD)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
           echo "Latest version: $VERSION"
 
       - name: Build Docker image
@@ -191,6 +214,8 @@ jobs:
           tags: herald-dingtalk:test
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
+            COMMIT=${{ steps.version.outputs.commit }}
+            BUILD_DATE=${{ steps.version.outputs.build_date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -202,13 +227,16 @@ jobs:
   # Full build check
   build:
     name: Build Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Go environment
         uses: actions/setup-go@v6
@@ -230,29 +258,30 @@ jobs:
 
       - name: Get version information
         id: version
+        shell: bash
         run: |
           VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev-$(git rev-parse --short HEAD)")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build project
+        shell: bash
         run: |
           VERSION=${{ steps.version.outputs.version }}
           COMMIT=${{ github.sha }}
-          BUILD_DATE=$(date +%FT%T%z)
+          BUILD_DATE=$(git show -s --format=%cI HEAD)
           LDFLAGS="-s -w -X 'github.com/soulteary/version-kit.Version=${VERSION}' -X 'github.com/soulteary/version-kit.Commit=${COMMIT}' -X 'github.com/soulteary/version-kit.BuildDate=${BUILD_DATE}'"
-          CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o herald-dingtalk${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./main.go
+          CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o herald-dingtalk${{ matrix.os == 'windows-latest' && '.exe' || '' }} .
 
       - name: Verify build artifacts
-        if: matrix.os == 'ubuntu-latest'
+        shell: bash
         run: |
-          if [ -f herald-dingtalk ]; then
-            echo "Build successful, file exists"
-            ls -lh herald-dingtalk
-            file herald-dingtalk
-          else
-            echo "Build failed, file does not exist"
+          ARTIFACT=herald-dingtalk${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          if [ ! -s "$ARTIFACT" ]; then
+            echo "Build failed: $ARTIFACT is missing or empty"
             exit 1
           fi
+          echo "Build successful: $ARTIFACT"
+          ls -lh "$ARTIFACT"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
