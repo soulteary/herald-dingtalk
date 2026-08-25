@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,9 +15,21 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/pterm/pterm"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/logger-kit"
 )
+
+func TestShowBanner(t *testing.T) {
+	outputEnabled := pterm.Output
+	pterm.DisableOutput()
+	t.Cleanup(func() {
+		if outputEnabled {
+			pterm.EnableOutput()
+		}
+	})
+	showBanner()
+}
 
 func TestNewAppEnforcesBodyLimit(t *testing.T) {
 	original := config.MaxRequestBodyBytes
@@ -126,5 +139,77 @@ func TestServeReturnsListenerFailure(t *testing.T) {
 	err = serve(app, listener, nil, time.Second, log)
 	if err == nil || !strings.Contains(err.Error(), "serve:") {
 		t.Fatalf("error = %v, want listener serve failure", err)
+	}
+}
+
+func TestRunServesUntilShutdownSignal(t *testing.T) {
+	originalListen := listenTCP
+	originalPort := config.Port
+	originalAppKey, originalSecret := config.AppKey, config.AppSecret
+	originalAgentID, originalLookupMode := config.AgentID, config.LookupMode
+	t.Cleanup(func() {
+		listenTCP = originalListen
+		config.Port = originalPort
+		config.AppKey, config.AppSecret = originalAppKey, originalSecret
+		config.AgentID, config.LookupMode = originalAgentID, originalLookupMode
+	})
+
+	listenerReady := make(chan net.Listener, 1)
+	listenTCP = func(_, _ string) (net.Listener, error) {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err == nil {
+			listenerReady <- listener
+		}
+		return listener, err
+	}
+	config.Port = "8083"
+	config.AppKey, config.AppSecret, config.AgentID = "key", "secret", "1"
+	config.LookupMode = config.LookupModeNone
+
+	quit := make(chan os.Signal, 1)
+	log := logger.New(logger.Config{Level: logger.Disabled, Output: io.Discard})
+	runDone := make(chan error, 1)
+	go func() { runDone <- run(log, quit) }()
+	listener := <-listenerReady
+
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.After(time.Second)
+	for {
+		resp, err := client.Get("http://" + listener.Addr().String() + "/healthz")
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("health status = %d, want 200", resp.StatusCode)
+			}
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("server did not become ready: %v", err)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	quit <- syscall.SIGTERM
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("run did not stop")
+	}
+}
+
+func TestRunReturnsListenError(t *testing.T) {
+	originalListen := listenTCP
+	t.Cleanup(func() { listenTCP = originalListen })
+	wantErr := errors.New("bind failed")
+	listenTCP = func(_, _ string) (net.Listener, error) { return nil, wantErr }
+	log := logger.New(logger.Config{Level: logger.Disabled, Output: io.Discard})
+	err := run(log, make(chan os.Signal))
+	if !errors.Is(err, wantErr) || !strings.Contains(err.Error(), "listen:") {
+		t.Fatalf("run error = %v, want wrapped bind error", err)
 	}
 }

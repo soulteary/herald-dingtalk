@@ -21,6 +21,8 @@ import (
 
 const shutdownTimeout = 10 * time.Second
 
+var listenTCP = net.Listen
+
 // showBanner displays the startup banner with version
 func showBanner() {
 	pterm.DefaultBox.Println(
@@ -56,7 +58,7 @@ func run(log *logger.Logger, quit <-chan os.Signal) error {
 	}
 	app := newApp()
 	router.Setup(app, log)
-	listener, err := net.Listen("tcp", listenAddress(config.Port))
+	listener, err := listenTCP("tcp", listenAddress(config.Port))
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}

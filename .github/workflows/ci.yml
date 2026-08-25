@@ -8,7 +8,7 @@ on:
 
 env:
   DOCKER_BUILDKIT: 1
-  MIN_COVERAGE: '75.0'
+  MIN_COVERAGE: '90.0'
 
 jobs:
   # Code formatting check

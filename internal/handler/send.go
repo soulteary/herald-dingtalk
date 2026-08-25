@@ -87,11 +87,7 @@ func SendHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idemp
 		defer cancel()
 	}
 
-	fingerprint, err := requestFingerprint(req)
-	if err != nil {
-		log.Warn().Err(err).Msg("send invalid_request: fingerprint failed")
-		return sendError(c, fiber.StatusBadRequest, "invalid_request", "request cannot be fingerprinted")
-	}
+	fingerprint := requestFingerprint(req)
 	result, outcome, err := idemStore.Do(requestCtx, req.IdempotencyKey, fingerprint, func() idempotency.Result {
 		return sendOnce(requestCtx, req, dingtalkClient, log)
 	})
@@ -158,16 +154,13 @@ func sendOnce(ctx context.Context, req provider.HTTPSendRequest, dingtalkClient 
 	}
 }
 
-func requestFingerprint(req provider.HTTPSendRequest) (string, error) {
-	payload, err := json.Marshal(fingerprintPayload{
+func requestFingerprint(req provider.HTTPSendRequest) string {
+	payload, _ := json.Marshal(fingerprintPayload{
 		Channel: req.Channel, To: req.To, Template: req.Template, Params: req.Params,
 		Subject: req.Subject, Body: req.Body, Locale: req.Locale,
 	})
-	if err != nil {
-		return "", err
-	}
 	sum := sha256.Sum256(payload)
-	return fmt.Sprintf("%x", sum), nil
+	return fmt.Sprintf("%x", sum)
 }
 
 func isTimeoutError(err error) bool {

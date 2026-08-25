@@ -11,6 +11,33 @@ import (
 	"github.com/soulteary/provider-kit"
 )
 
+type observedContext struct {
+	done        chan struct{}
+	observed    chan struct{}
+	observeOnce sync.Once
+	cancelOnce  sync.Once
+	canceled    atomic.Bool
+}
+
+func (c *observedContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (c *observedContext) Done() <-chan struct{} {
+	c.observeOnce.Do(func() { close(c.observed) })
+	return c.done
+}
+func (c *observedContext) Err() error {
+	if c.canceled.Load() {
+		return context.Canceled
+	}
+	return nil
+}
+func (c *observedContext) Value(interface{}) any { return nil }
+func (c *observedContext) cancel() {
+	c.cancelOnce.Do(func() {
+		c.canceled.Store(true)
+		close(c.done)
+	})
+}
+
 func successResult(messageID string) Result {
 	return Result{
 		StatusCode: 200,
@@ -228,5 +255,119 @@ func TestStoreRejectsCanceledContextBeforeExecution(t *testing.T) {
 	}
 	if executed {
 		t.Fatal("operation executed after its context was canceled")
+	}
+}
+
+func TestStoreRejectsInFlightFingerprintConflict(t *testing.T) {
+	store := NewStore(300)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _ = store.Do(context.Background(), "key", "first", func() Result {
+			close(started)
+			<-release
+			return successResult("message")
+		})
+	}()
+	<-started
+	_, _, err := store.Do(context.Background(), "key", "different", func() Result {
+		t.Fatal("conflicting waiter must not execute")
+		return Result{}
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+	close(release)
+	<-done
+}
+
+func TestStoreWaiterSharesCompletedResult(t *testing.T) {
+	store := NewStore(300)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	leaderDone := make(chan struct{})
+	go func() {
+		defer close(leaderDone)
+		_, _, _ = store.Do(context.Background(), "key", "fingerprint", func() Result {
+			close(started)
+			<-release
+			return successResult("shared-message")
+		})
+	}()
+	<-started
+
+	ctx := &observedContext{done: make(chan struct{}), observed: make(chan struct{})}
+	waiterDone := make(chan struct{})
+	var result Result
+	var outcome Outcome
+	var waiterErr error
+	go func() {
+		defer close(waiterDone)
+		result, outcome, waiterErr = store.Do(ctx, "key", "fingerprint", func() Result {
+			t.Error("waiter must not execute")
+			return Result{}
+		})
+	}()
+	<-ctx.observed
+	close(release)
+	<-leaderDone
+	<-waiterDone
+	if waiterErr != nil || outcome != OutcomeShared || result.Response.MessageID != "shared-message" {
+		t.Fatalf("waiter = %#v, %q, %v", result, outcome, waiterErr)
+	}
+}
+
+func TestStoreInFlightWaiterCancellation(t *testing.T) {
+	store := NewStore(300)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _ = store.Do(context.Background(), "key", "fingerprint", func() Result {
+			close(started)
+			<-release
+			return successResult("message")
+		})
+	}()
+	<-started
+	ctx := &observedContext{done: make(chan struct{}), observed: make(chan struct{})}
+	waiterDone := make(chan error, 1)
+	go func() {
+		_, _, err := store.Do(ctx, "key", "fingerprint", func() Result {
+			t.Error("canceled waiter must not execute")
+			return Result{}
+		})
+		waiterDone <- err
+	}()
+	<-ctx.observed
+	ctx.cancel()
+	err := <-waiterDone
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	close(release)
+	<-done
+}
+
+func TestStoreCleansUpPanickingLeader(t *testing.T) {
+	store := NewStore(300)
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("expected leader panic")
+			}
+		}()
+		_, _, _ = store.Do(context.Background(), "key", "fingerprint", func() Result {
+			panic("boom")
+		})
+	}()
+	if len(store.inFlight) != 0 {
+		t.Fatalf("in-flight calls = %d, want 0", len(store.inFlight))
+	}
+	if len(store.entries) != 0 {
+		t.Fatalf("cached entries = %d, want 0", len(store.entries))
 	}
 }

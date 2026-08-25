@@ -5,7 +5,7 @@ Thank you for your interest in contributing to herald-dingtalk.
 ## Development
 
 - **Go version**: 1.26+ (see [go.mod](go.mod)).
-- **Tests**: Run `go test -count=1 ./...`; use `go test -race ./...` for concurrency checks. Generate coverage with `go test -coverprofile=coverage.out ./...`, then inspect it with `go tool cover -func=coverage.out` or `go tool cover -html=coverage.out`. CI requires total statement coverage of at least 75%. Mobile lookup behavior is exercised automatically without environment-specific test commands.
+- **Tests**: Run `go test -count=1 ./...`; use `go test -race ./...` for concurrency checks. Generate coverage with `go test -coverprofile=coverage.out ./...`, then inspect it with `go tool cover -func=coverage.out` or `go tool cover -html=coverage.out`. CI requires total statement coverage of at least 90%. Mobile lookup behavior is exercised automatically without environment-specific test commands.
 - **Code style**: Follow standard Go formatting. Run `gofmt -s -w .` before committing. The CI runs `gofmt -s -l .` and fails if there are unformatted files.
 - **Static analysis**: CI runs `go vet ./...`. Run `golangci-lint run` locally (e.g. errcheck) before submitting.
 
