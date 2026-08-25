@@ -64,6 +64,7 @@ sequenceDiagram
 | `LOG_LEVEL` | 日志级别：trace, debug, info, warn, error | `info` | 否 |
 | `IDEMPOTENCY_TTL_SECONDS` | 幂等缓存 TTL（秒） | `300` | 否 |
 | `MAX_REQUEST_BODY_BYTES` | HTTP 请求体上限，有效范围为 1 字节至 1 MiB | `65536` | 否 |
+| `MAX_CONCURRENT_REQUESTS` | 每个进程允许的 `/v1` 并发请求上限；`0` 表示禁用 | `32` | 否 |
 
 ## Herald 侧配置
 

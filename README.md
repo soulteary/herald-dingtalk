@@ -64,6 +64,7 @@ sequenceDiagram
 | `LOG_LEVEL` | Log level: trace, debug, info, warn, error | `info` | No |
 | `IDEMPOTENCY_TTL_SECONDS` | Idempotency cache TTL (seconds) | `300` | No |
 | `MAX_REQUEST_BODY_BYTES` | Maximum HTTP request body size; valid range is 1 byte–1 MiB | `65536` | No |
+| `MAX_CONCURRENT_REQUESTS` | Maximum in-flight `/v1` requests per process; `0` disables the limit | `32` | No |
 
 ## Herald side
 

@@ -15,8 +15,10 @@ const LookupModeNone = "none"
 const LookupModeMobile = "mobile"
 
 const (
-	defaultMaxRequestBodyBytes = 64 * 1024
-	maxRequestBodyBytesLimit   = 1024 * 1024
+	defaultMaxRequestBodyBytes   = 64 * 1024
+	maxRequestBodyBytesLimit     = 1024 * 1024
+	defaultMaxConcurrentRequests = 32
+	maxConcurrentRequestsLimit   = 1024
 )
 
 var (
@@ -29,6 +31,8 @@ var (
 	IdemTTLSec = env.GetInt("IDEMPOTENCY_TTL_SECONDS", 300)
 	// MaxRequestBodyBytes bounds memory used while parsing one HTTP request.
 	MaxRequestBodyBytes = env.GetInt("MAX_REQUEST_BODY_BYTES", defaultMaxRequestBodyBytes)
+	// MaxConcurrentRequests bounds in-flight provider requests per process. Zero disables the limit.
+	MaxConcurrentRequests = env.GetInt("MAX_CONCURRENT_REQUESTS", defaultMaxConcurrentRequests)
 	// LookupMode: none=to 仅 userid；mobile=to 支持 userid 或手机号（需申请 Contact.User.mobile 权限）
 	LookupMode = env.Get("DINGTALK_LOOKUP_MODE", LookupModeNone)
 )
@@ -40,6 +44,18 @@ func EffectiveMaxRequestBodyBytes() int {
 		return defaultMaxRequestBodyBytes
 	}
 	return MaxRequestBodyBytes
+}
+
+// EffectiveMaxConcurrentRequests returns a safe per-process concurrency limit.
+// Zero explicitly disables the limit; invalid values use the documented default.
+func EffectiveMaxConcurrentRequests() int {
+	if MaxConcurrentRequests == 0 {
+		return 0
+	}
+	if MaxConcurrentRequests < 0 || MaxConcurrentRequests > maxConcurrentRequestsLimit {
+		return defaultMaxConcurrentRequests
+	}
+	return MaxConcurrentRequests
 }
 
 // ValidWith returns true when DingTalk credentials are complete, have no

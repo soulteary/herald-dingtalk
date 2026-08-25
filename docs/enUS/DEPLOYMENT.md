@@ -58,6 +58,7 @@ services:
       # - LOG_LEVEL=info
       # - IDEMPOTENCY_TTL_SECONDS=300
       # - MAX_REQUEST_BODY_BYTES=65536
+      # - MAX_CONCURRENT_REQUESTS=32
 ```
 
 ## Configuration
@@ -75,6 +76,7 @@ services:
 | `LOG_LEVEL` | Log level: trace, debug, info, warn, error | `info` | No |
 | `IDEMPOTENCY_TTL_SECONDS` | Idempotency cache TTL in seconds | `300` | No |
 | `MAX_REQUEST_BODY_BYTES` | Maximum HTTP request body size; values above 1 MiB or non-positive values use the default | `65536` | No |
+| `MAX_CONCURRENT_REQUESTS` | Maximum in-flight `/v1` requests per process; excess requests receive `429` with `Retry-After: 1`; `0` disables the limit | `32` | No |
 
 When a credential is missing or has surrounding whitespace, `DINGTALK_AGENT_ID` is not a positive integer, or `DINGTALK_LOOKUP_MODE` is unsupported, both provider endpoints return `503` with `error_code: "provider_down"`. The startup warning identifies the invalid variable without printing credential values.
 
