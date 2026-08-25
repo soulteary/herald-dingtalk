@@ -174,13 +174,13 @@ services:
 | `API_KEY` | 若设置，调用方必须在请求头中携带 `X-API-Key` 且与此一致 | （空） | 否 |
 | `DINGTALK_APP_KEY` | 钉钉应用 AppKey（来自钉钉开放平台） | （空） | 是（发送/解析时） |
 | `DINGTALK_APP_SECRET` | 钉钉应用 AppSecret | （空） | 是（发送/解析时） |
-| `DINGTALK_AGENT_ID` | 工作通知使用的 AgentID | （空） | 是（发送/解析时） |
-| `DINGTALK_LOOKUP_MODE` | `none`：`to` 仅支持 userid；`mobile`：`to` 支持 userid 或 11 位手机号（需申请 Contact.User.mobile 权限） | `none` | 否 |
+| `DINGTALK_AGENT_ID` | 工作通知使用的十进制正整数 AgentID | （空） | 是（发送/解析时） |
+| `DINGTALK_LOOKUP_MODE` | 只能为 `none`（仅 userid）或 `mobile`（userid 或 11 位手机号，需申请 Contact.User.mobile 权限） | `none` | 否 |
 | `LOG_LEVEL` | 日志级别：trace / debug / info / warn / error | `info` | 否 |
 | `IDEMPOTENCY_TTL_SECONDS` | 成功发送结果的幂等缓存 TTL（秒） | `300` | 否 |
 | `MAX_REQUEST_BODY_BYTES` | HTTP 请求体上限；非正数或超过 1 MiB 时回退到默认值 | `65536` | 否 |
 
-当 `DINGTALK_APP_KEY`、`DINGTALK_APP_SECRET`、`DINGTALK_AGENT_ID` 任一未设置时，`POST /v1/send` 与 `POST /v1/resolve` 会返回 **503**，`error_code` 为 `provider_down`。服务仍会正常启动并响应 `GET /healthz`。
+当凭证缺失或包含首尾空白、`DINGTALK_AGENT_ID` 不是正整数，或 `DINGTALK_LOOKUP_MODE` 不受支持时，`POST /v1/send` 与 `POST /v1/resolve` 会返回 **503**，`error_code` 为 `provider_down`。启动警告只指出无效变量，不输出凭证值；服务仍会响应 `GET /healthz`。
 
 ### 4.2 配置文件
 

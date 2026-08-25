@@ -56,13 +56,13 @@ This guide helps you diagnose and resolve common issues with herald-dingtalk.
 
 ### Cause
 
-At startup, herald-dingtalk checks that all three DingTalk settings are non-empty. If any of `DINGTALK_APP_KEY`, `DINGTALK_APP_SECRET`, or `DINGTALK_AGENT_ID` is missing, the DingTalk client is not initialized and every send returns 503.
+At startup, herald-dingtalk validates the complete DingTalk configuration. The client is not initialized when a credential is missing or has surrounding whitespace, `DINGTALK_AGENT_ID` is not a positive base-10 integer, or `DINGTALK_LOOKUP_MODE` is not `none` or `mobile`.
 
 ### Solutions
 
 1. Set all three environment variables and restart the process (or container).
-2. Confirm they are actually present in the runtime (e.g. no typo in env names, and in Docker/Kubernetes they are passed correctly).
-3. Check logs at startup: if credentials are missing, herald-dingtalk logs a warning that `/v1/send` will return 503.
+2. Confirm the values have no surrounding whitespace, AgentID is a positive integer, and lookup mode is exactly `none` or `mobile`.
+3. Check startup logs for the invalid variable. Credential values are never included in the warning.
 
 ---
 

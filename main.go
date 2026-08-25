@@ -54,8 +54,8 @@ func main() {
 	if !strings.HasPrefix(port, ":") {
 		port = ":" + port
 	}
-	if !config.Valid() {
-		log.Warn().Msg("DINGTALK_APP_KEY / DINGTALK_APP_SECRET / DINGTALK_AGENT_ID not set; /v1/send will return 503")
+	if err := config.Validate(); err != nil {
+		log.Warn().Err(err).Msg("invalid DingTalk configuration; /v1/send and /v1/resolve will return 503")
 	}
 	app := newApp()
 	router.Setup(app, log)

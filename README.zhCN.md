@@ -49,7 +49,7 @@ sequenceDiagram
   请求：`channel`（传入时必须为 `dingtalk`）、`to`（钉钉 **userid**，或当 `DINGTALK_LOOKUP_MODE=mobile` 时为 11 位**手机号**）、`body`（或 `params.code`）、`idempotency_key`，可选 `template`/`params`/`locale`/`subject`/`timeout_seconds`（0–30）。  
   响应：`{ "ok": true, "message_id": "...", "provider": "dingtalk" }` 或 `{ "ok": false, "error_code": "...", "error_message": "..." }`。
 - **GET /healthz**：`{ "status": "healthy", "service": "herald-dingtalk" }`（通过 [health-kit](https://github.com/soulteary/health-kit)）。
-- **GET /readyz**：仅在钉钉必需凭证均已配置时返回 `200`，否则返回 `503`。
+- **GET /readyz**：仅在凭证完整、`DINGTALK_AGENT_ID` 为正整数且查询模式受支持时返回 `200`，否则返回 `503`。
 
 ## 配置
 
@@ -59,8 +59,8 @@ sequenceDiagram
 | `API_KEY` | 若设置，Herald 需在请求头中携带 `X-API-Key` | `` | 否 |
 | `DINGTALK_APP_KEY` | 钉钉应用 AppKey | `` | 是（发送时） |
 | `DINGTALK_APP_SECRET` | 钉钉应用 AppSecret | `` | 是（发送时） |
-| `DINGTALK_AGENT_ID` | 工作通知使用的 AgentID | `` | 是（发送时） |
-| `DINGTALK_LOOKUP_MODE` | `none`=to 仅 userid；`mobile`=to 支持 userid 或 11 位手机号（需申请 Contact.User.mobile 权限） | `none` | 否 |
+| `DINGTALK_AGENT_ID` | 工作通知使用的十进制正整数 AgentID | `` | 是（发送时） |
+| `DINGTALK_LOOKUP_MODE` | 只能为 `none`（仅 userid）或 `mobile`（userid 或 11 位手机号，需申请 Contact.User.mobile 权限） | `none` | 否 |
 | `LOG_LEVEL` | 日志级别：trace, debug, info, warn, error | `info` | 否 |
 | `IDEMPOTENCY_TTL_SECONDS` | 幂等缓存 TTL（秒） | `300` | 否 |
 | `MAX_REQUEST_BODY_BYTES` | HTTP 请求体上限，有效范围为 1 字节至 1 MiB | `65536` | 否 |
