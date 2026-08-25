@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/observability"
-	"github.com/soulteary/logger-kit"
+	"github.com/soulteary/logger-kit/v2"
 )
 
 // ResolveRequest body for POST /v1/resolve.
@@ -19,7 +19,7 @@ type ResolveResponse struct {
 
 // ResolveHandler handles POST /v1/resolve: OAuth2 auth_code -> userid.
 // Optional: useful when Stargate uses DingTalk OAuth2 login link and needs to resolve code to userid.
-func ResolveHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.Logger) error {
+func ResolveHandler(c fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.Logger) error {
 	log = observability.RequestLogger(c, log)
 	if !hasJSONContentType(c) {
 		log.Warn().Msg("resolve unsupported_media_type: application/json required")
@@ -29,7 +29,7 @@ func ResolveHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.L
 	}
 
 	var req ResolveRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		log.Warn().Err(err).Msg("resolve invalid_request: body parse error")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"ok": false, "error_code": "invalid_request", "error_message": err.Error(),
@@ -47,7 +47,7 @@ func ResolveHandler(c *fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.L
 			"ok": false, "error_code": "provider_down", "error_message": "dingtalk not configured",
 		})
 	}
-	userid, err := dingtalkClient.ResolveAuthCode(c.Context(), req.AuthCode)
+	userid, err := dingtalkClient.ResolveAuthCode(c, req.AuthCode)
 	if err != nil {
 		log.Warn().Err(err).Msg("resolve failed: oauth2 error")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

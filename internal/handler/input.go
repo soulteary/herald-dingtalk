@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 const (
@@ -13,7 +13,7 @@ const (
 	maxAuthCodeLength    = 4096
 )
 
-func hasJSONContentType(c *fiber.Ctx) bool {
+func hasJSONContentType(c fiber.Ctx) bool {
 	mediaType, _, err := mime.ParseMediaType(c.Get(fiber.HeaderContentType))
 	return err == nil && mediaType == fiber.MIMEApplicationJSON
 }

@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/soulteary/logger-kit"
+	"github.com/gofiber/fiber/v3"
+	"github.com/soulteary/logger-kit/v2"
 )
 
 func TestRequestLoggerAddsMiddlewareRequestID(t *testing.T) {
@@ -19,7 +19,7 @@ func TestRequestLoggerAddsMiddlewareRequestID(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(logger.FiberMiddleware(config))
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		RequestLogger(c, base).Info().Msg("application event")
 		return c.SendStatus(fiber.StatusNoContent)
 	})
@@ -37,7 +37,7 @@ func TestRequestLoggerFallsBackWithoutMiddleware(t *testing.T) {
 	var output bytes.Buffer
 	base := logger.New(logger.Config{Level: logger.InfoLevel, Output: &output})
 	app := fiber.New()
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		if got := RequestLogger(c, base); got != base {
 			t.Fatal("RequestLogger must return the base logger without request context")
 		}

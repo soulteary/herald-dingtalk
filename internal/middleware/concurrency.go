@@ -1,16 +1,16 @@
 package middleware
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 
 // LimitConcurrency rejects excess in-flight requests instead of allowing an
 // unbounded queue to consume process resources. Non-positive limits disable it.
 func LimitConcurrency(max int) fiber.Handler {
 	if max <= 0 {
-		return func(c *fiber.Ctx) error { return c.Next() }
+		return func(c fiber.Ctx) error { return c.Next() }
 	}
 
 	slots := make(chan struct{}, max)
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		select {
 		case slots <- struct{}{}:
 			defer func() { <-slots }()

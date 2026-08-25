@@ -10,13 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/pterm/pterm"
 	"github.com/pterm/pterm/putils"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/router"
-	"github.com/soulteary/logger-kit"
-	version "github.com/soulteary/version-kit"
+	"github.com/soulteary/logger-kit/v2"
+	version "github.com/soulteary/version-kit/v2"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -37,11 +37,10 @@ func showBanner() {
 
 func newApp() *fiber.App {
 	return fiber.New(fiber.Config{
-		DisableStartupMessage: false,
-		BodyLimit:             config.EffectiveMaxRequestBodyBytes(),
-		ReadTimeout:           10 * time.Second,
-		WriteTimeout:          35 * time.Second,
-		IdleTimeout:           60 * time.Second,
+		BodyLimit:    config.EffectiveMaxRequestBodyBytes(),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 35 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	})
 }
 

@@ -10,12 +10,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/idempotency"
-	"github.com/soulteary/logger-kit"
+	"github.com/soulteary/logger-kit/v2"
 	"github.com/soulteary/provider-kit"
 )
 
@@ -51,7 +52,7 @@ func TestSendHandler_SuccessWithUserid(t *testing.T) {
 	idemStore := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
 
 	body := bytes.NewBufferString(`{"to":"userid123","body":"hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
@@ -85,7 +86,7 @@ func TestSendHandler_EmptyTo(t *testing.T) {
 	idemStore := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
 
 	body := bytes.NewBufferString(`{"to":"","body":"hi"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
@@ -113,7 +114,7 @@ func TestSendHandler_EmptyTo(t *testing.T) {
 func TestSendHandler_InvalidJSON(t *testing.T) {
 	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
 	app := fiber.New()
-	app.Post("/v1/send", func(c *fiber.Ctx) error {
+	app.Post("/v1/send", func(c fiber.Ctx) error {
 		return SendHandler(c, client, idempotency.NewStore(300), logger.New(logger.Config{Level: logger.Disabled}))
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", strings.NewReader("{"))
@@ -131,7 +132,7 @@ func TestSendHandler_InvalidJSON(t *testing.T) {
 func TestSendHandler_RejectsUnsupportedMediaType(t *testing.T) {
 	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{})
 	app := fiber.New()
-	app.Post("/v1/send", func(c *fiber.Ctx) error {
+	app.Post("/v1/send", func(c fiber.Ctx) error {
 		return SendHandler(c, client, idempotency.NewStore(300), logger.New(logger.Config{Level: logger.ErrorLevel}))
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", strings.NewReader(`{"to":"user"}`))
@@ -158,7 +159,7 @@ func TestSendHandler_RejectsUnsafeTokens(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			app := fiber.New()
-			app.Post("/v1/send", func(c *fiber.Ctx) error {
+			app.Post("/v1/send", func(c fiber.Ctx) error {
 				return SendHandler(c, client, idempotency.NewStore(300), logger.New(logger.Config{Level: logger.ErrorLevel}))
 			})
 			req := httptest.NewRequest(http.MethodPost, "/v1/send", strings.NewReader(tt.body))
@@ -185,7 +186,7 @@ func TestSendHandler_RejectsMismatchedIdempotencyKeys(t *testing.T) {
 	app := fiber.New()
 	store := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, store, log) })
 
 	body := bytes.NewBufferString(`{"to":"userid123","body":"hello","idempotency_key":"body-key"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
@@ -213,7 +214,7 @@ func TestSendHandler_RejectsOversizedIdempotencyKey(t *testing.T) {
 	app := fiber.New()
 	store := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, store, log) })
 
 	body := bytes.NewBufferString(`{"to":"userid123","body":"hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
@@ -248,7 +249,7 @@ func TestSendHandler_CachesSuccessfulIdempotentResponse(t *testing.T) {
 	app := fiber.New()
 	store := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, store, log) })
 
 	for i := 0; i < 2; i++ {
 		body := bytes.NewBufferString(`{"to":"userid123","body":"hello","idempotency_key":"same-key"}`)
@@ -295,7 +296,7 @@ func TestSendHandler_RejectsIdempotencyKeyReuseWithDifferentRequest(t *testing.T
 	app := fiber.New()
 	store := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, store, log) })
 
 	for i, message := range []string{"first", "second"} {
 		body := bytes.NewBufferString(`{"to":"userid123","body":"` + message + `","idempotency_key":"same-key"}`)
@@ -342,7 +343,7 @@ func TestSendHandler_DoesNotCacheUpstreamFailure(t *testing.T) {
 	app := fiber.New()
 	store := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, store, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, store, log) })
 
 	for i := 0; i < 2; i++ {
 		body := bytes.NewBufferString(`{"to":"userid123","body":"hello","idempotency_key":"retry-key"}`)
@@ -389,7 +390,7 @@ func TestSendHandler_RejectsUnsupportedChannel(t *testing.T) {
 	idemStore := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
 
 	body := bytes.NewBufferString(`{"channel":"email","to":"userid123","body":"hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
@@ -422,7 +423,7 @@ func TestSendHandler_RejectsInvalidTimeout(t *testing.T) {
 	idemStore := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
 
 	body := bytes.NewBufferString(`{"channel":"dingtalk","to":"userid123","body":"hello","timeout_seconds":31}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
@@ -464,7 +465,7 @@ func TestSendHandler_MapsUpstreamFailureToBadGateway(t *testing.T) {
 	idemStore := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
 
 	body := bytes.NewBufferString(`{"channel":"dingtalk","to":"userid123","body":"hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
@@ -492,12 +493,12 @@ func TestSendHandler_AppliesRequestTimeout(t *testing.T) {
 	idemStore := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
 
 	body := bytes.NewBufferString(`{"channel":"dingtalk","to":"userid123","body":"hello","timeout_seconds":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := app.Test(req, 3000)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -576,7 +577,7 @@ func TestSendHandler_MobileLookupWhenModeMobile(t *testing.T) {
 	idemStore := idempotency.NewStore(300)
 	log := logger.New(logger.Config{Level: logger.ErrorLevel})
 	app := fiber.New()
-	app.Post("/v1/send", func(c *fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
+	app.Post("/v1/send", func(c fiber.Ctx) error { return SendHandler(c, client, idemStore, log) })
 
 	body := bytes.NewBufferString(`{"to":"13800138000","body":"code"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/send", body)

@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/pterm/pterm"
 	"github.com/soulteary/herald-dingtalk/internal/config"
-	"github.com/soulteary/logger-kit"
+	"github.com/soulteary/logger-kit/v2"
 )
 
 func TestShowBanner(t *testing.T) {
@@ -37,7 +37,7 @@ func TestNewAppEnforcesBodyLimit(t *testing.T) {
 	t.Cleanup(func() { config.MaxRequestBodyBytes = original })
 
 	app := newApp()
-	app.Post("/echo", func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
+	app.Post("/echo", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 	req := httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(strings.Repeat("x", 33)))
 	req.Header.Set("Content-Type", "text/plain")
 	resp, err := app.Test(req)
@@ -62,10 +62,10 @@ func TestListenAddress(t *testing.T) {
 }
 
 func TestServeWaitsForInFlightRequestBeforeShutdown(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	started := make(chan struct{})
 	release := make(chan struct{})
-	app.Get("/slow", func(c *fiber.Ctx) error {
+	app.Get("/slow", func(c fiber.Ctx) error {
 		close(started)
 		<-release
 		return c.SendStatus(fiber.StatusNoContent)
@@ -127,7 +127,7 @@ func TestServeWaitsForInFlightRequestBeforeShutdown(t *testing.T) {
 }
 
 func TestServeReturnsListenerFailure(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

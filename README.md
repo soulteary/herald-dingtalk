@@ -10,6 +10,8 @@
 
 DingTalk notification adapter for [Herald](https://github.com/soulteary/herald). Herald forwards verification codes over HTTP to this service; herald-dingtalk calls the DingTalk work notification API to deliver messages. All DingTalk credentials and business logic live in this project only—Herald does not hold any DingTalk credentials.
 
+The HTTP server uses Fiber v3.4.0 and the matching v2 module lines of the Fiber-facing kit packages. Building from source requires Go 1.26 or later.
+
 ## Core Features
 
 - **Herald HTTP Provider contract**: Implements the same HTTP send contract as Herald's external provider; request/response align with [provider-kit](https://github.com/soulteary/provider-kit) `HTTPSendRequest` / `HTTPSendResponse`.
