@@ -78,7 +78,7 @@ Check service health. Implemented via [health-kit](https://github.com/soulteary/
 
 **GET /readyz**
 
-Check whether the service has all required DingTalk credentials. It returns `200` with `status: "ready"` when configured, or `503` with `status: "not_ready"` otherwise. Use `/healthz` for liveness and `/readyz` for readiness.
+Check whether the service has a semantically valid DingTalk configuration. It returns `200` with `status: "ready"` only when credentials are complete and free of surrounding whitespace, `DINGTALK_AGENT_ID` is a positive base-10 integer, and `DINGTALK_LOOKUP_MODE` is `none` or `mobile`. Otherwise it returns `503` with `status: "not_ready"`. Use `/healthz` for liveness and `/readyz` for readiness.
 
 Requests larger than `MAX_REQUEST_BODY_BYTES` (64 KiB by default) are rejected with HTTP `413 Request Entity Too Large`.
 

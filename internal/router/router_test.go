@@ -11,20 +11,21 @@ import (
 )
 
 type configSnapshot struct {
-	apiKey, appKey, appSecret, agentID string
+	apiKey, appKey, appSecret, agentID, lookupMode string
 }
 
 func snapshotConfig(t *testing.T) {
 	t.Helper()
 	snapshot := configSnapshot{
 		apiKey: config.APIKey, appKey: config.AppKey,
-		appSecret: config.AppSecret, agentID: config.AgentID,
+		appSecret: config.AppSecret, agentID: config.AgentID, lookupMode: config.LookupMode,
 	}
 	t.Cleanup(func() {
 		config.APIKey = snapshot.apiKey
 		config.AppKey = snapshot.appKey
 		config.AppSecret = snapshot.appSecret
 		config.AgentID = snapshot.agentID
+		config.LookupMode = snapshot.lookupMode
 	})
 }
 
@@ -70,6 +71,7 @@ func TestReadinessReflectsConfiguration(t *testing.T) {
 	snapshotConfig(t)
 	config.APIKey = ""
 	config.AppKey, config.AppSecret, config.AgentID = "", "", ""
+	config.LookupMode = config.LookupModeNone
 
 	app := fiber.New()
 	Setup(app, testLogger())
@@ -91,6 +93,46 @@ func TestReadinessReflectsConfiguration(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("configured status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestSetupRejectsSemanticallyInvalidConfiguration(t *testing.T) {
+	tests := []struct {
+		name       string
+		agentID    string
+		lookupMode string
+	}{
+		{name: "invalid agent ID", agentID: "not-a-number", lookupMode: config.LookupModeNone},
+		{name: "invalid lookup mode", agentID: "1", lookupMode: "phone"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snapshotConfig(t)
+			config.APIKey = ""
+			config.AppKey, config.AppSecret, config.AgentID = "key", "secret", tt.agentID
+			config.LookupMode = tt.lookupMode
+
+			app := fiber.New()
+			Setup(app, testLogger())
+
+			for _, endpoint := range []struct {
+				method string
+				path   string
+			}{
+				{method: http.MethodGet, path: "/readyz"},
+				{method: http.MethodPost, path: "/v1/send"},
+			} {
+				resp, err := app.Test(httptest.NewRequest(endpoint.method, endpoint.path, nil))
+				if err != nil {
+					t.Fatalf("%s %s: %v", endpoint.method, endpoint.path, err)
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode != http.StatusServiceUnavailable {
+					t.Fatalf("%s %s status = %d, want 503", endpoint.method, endpoint.path, resp.StatusCode)
+				}
+			}
+		})
 	}
 }
 

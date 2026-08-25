@@ -34,7 +34,7 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 
 **GET /readyz**
 
-检查钉钉必需凭证是否配置完整。配置完整时返回 `200` 和 `status: "ready"`，否则返回 `503` 和 `status: "not_ready"`。`/healthz` 用于存活检查，`/readyz` 用于就绪检查。
+检查钉钉配置是否具有正确语义。仅当凭证完整且无首尾空白、`DINGTALK_AGENT_ID` 为十进制正整数，并且 `DINGTALK_LOOKUP_MODE` 为 `none` 或 `mobile` 时，才返回 `200` 和 `status: "ready"`；否则返回 `503` 和 `status: "not_ready"`。`/healthz` 用于存活检查，`/readyz` 用于就绪检查。
 
 超过 `MAX_REQUEST_BODY_BYTES`（默认 64 KiB）的请求会返回 HTTP `413 Request Entity Too Large`。
 

@@ -1,6 +1,10 @@
 package config
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/soulteary/cli-kit/env"
 )
 
@@ -38,12 +42,55 @@ func EffectiveMaxRequestBodyBytes() int {
 	return MaxRequestBodyBytes
 }
 
-// ValidWith returns true when all three DingTalk credentials are non-empty.
+// ValidWith returns true when DingTalk credentials are complete, have no
+// surrounding whitespace, and agentID is a positive base-10 integer.
 func ValidWith(appKey, appSecret, agentID string) bool {
-	return appKey != "" && appSecret != "" && agentID != ""
+	return validateCredentialsWith(appKey, appSecret, agentID) == nil
 }
 
-// Valid returns true when configured DingTalk credentials are set.
+// ValidateWith validates all DingTalk settings without exposing credential
+// values in errors.
+func ValidateWith(appKey, appSecret, agentID, lookupMode string) error {
+	if err := validateCredentialsWith(appKey, appSecret, agentID); err != nil {
+		return err
+	}
+	if lookupMode != LookupModeNone && lookupMode != LookupModeMobile {
+		return fmt.Errorf("DINGTALK_LOOKUP_MODE must be %q or %q", LookupModeNone, LookupModeMobile)
+	}
+	return nil
+}
+
+// Validate validates the process-level DingTalk configuration.
+func Validate() error {
+	return ValidateWith(AppKey, AppSecret, AgentID, LookupMode)
+}
+
+// Valid returns true when the process-level DingTalk configuration is ready.
 func Valid() bool {
-	return ValidWith(AppKey, AppSecret, AgentID)
+	return Validate() == nil
+}
+
+func validateCredentialsWith(appKey, appSecret, agentID string) error {
+	credentials := []struct {
+		name  string
+		value string
+	}{
+		{name: "DINGTALK_APP_KEY", value: appKey},
+		{name: "DINGTALK_APP_SECRET", value: appSecret},
+		{name: "DINGTALK_AGENT_ID", value: agentID},
+	}
+	for _, credential := range credentials {
+		if credential.value == "" {
+			return fmt.Errorf("%s is required", credential.name)
+		}
+		if strings.TrimSpace(credential.value) != credential.value {
+			return fmt.Errorf("%s must not contain surrounding whitespace", credential.name)
+		}
+	}
+
+	parsedAgentID, err := strconv.ParseInt(agentID, 10, 64)
+	if err != nil || parsedAgentID <= 0 {
+		return fmt.Errorf("DINGTALK_AGENT_ID must be a positive base-10 integer")
+	}
+	return nil
 }

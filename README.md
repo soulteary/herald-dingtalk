@@ -49,7 +49,7 @@ sequenceDiagram
   Request: `channel` (must be `dingtalk` when set), `to` (DingTalk **userid**, or 11-digit **mobile** when `DINGTALK_LOOKUP_MODE=mobile`), `body` (or `params.code`), `idempotency_key`, optional `template`/`params`/`locale`/`subject`/`timeout_seconds` (0–30).  
   Response: `{ "ok": true, "message_id": "...", "provider": "dingtalk" }` or `{ "ok": false, "error_code": "...", "error_message": "..." }`.
 - **GET /healthz**: `{ "status": "healthy", "service": "herald-dingtalk" }` (via [health-kit](https://github.com/soulteary/health-kit)).
-- **GET /readyz**: Returns `200` only when all required DingTalk credentials are configured; otherwise returns `503`.
+- **GET /readyz**: Returns `200` only when credentials are complete, `DINGTALK_AGENT_ID` is a positive integer, and lookup mode is supported; otherwise returns `503`.
 
 ## Configuration
 
@@ -59,8 +59,8 @@ sequenceDiagram
 | `API_KEY` | If set, Herald must send `X-API-Key` | `` | No |
 | `DINGTALK_APP_KEY` | DingTalk app key | `` | Yes (for send) |
 | `DINGTALK_APP_SECRET` | DingTalk app secret | `` | Yes (for send) |
-| `DINGTALK_AGENT_ID` | Agent ID for work notification | `` | Yes (for send) |
-| `DINGTALK_LOOKUP_MODE` | `none` = `to` is userid only; `mobile` = `to` can be userid or 11-digit mobile (requires Contact.User.mobile permission) | `none` | No |
+| `DINGTALK_AGENT_ID` | Positive base-10 Agent ID for work notification | `` | Yes (for send) |
+| `DINGTALK_LOOKUP_MODE` | Must be `none` (userid only) or `mobile` (userid or 11-digit mobile; requires Contact.User.mobile permission) | `none` | No |
 | `LOG_LEVEL` | Log level: trace, debug, info, warn, error | `info` | No |
 | `IDEMPOTENCY_TTL_SECONDS` | Idempotency cache TTL (seconds) | `300` | No |
 | `MAX_REQUEST_BODY_BYTES` | Maximum HTTP request body size; valid range is 1 byte–1 MiB | `65536` | No |

@@ -15,6 +15,12 @@ func TestValidWith(t *testing.T) {
 		{"only secret", "", "secret", "", false},
 		{"only agentID", "", "", "1", false},
 		{"all set", "key", "secret", "1", true},
+		{"blank appKey", " ", "secret", "1", false},
+		{"secret surrounding whitespace", "key", " secret", "1", false},
+		{"agentID surrounding whitespace", "key", "secret", "1 ", false},
+		{"agentID zero", "key", "secret", "0", false},
+		{"agentID negative", "key", "secret", "-1", false},
+		{"agentID not numeric", "key", "secret", "agent", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -27,18 +33,54 @@ func TestValidWith(t *testing.T) {
 }
 
 func TestValidUsesConfiguredCredentials(t *testing.T) {
-	originalAppKey, originalSecret, originalAgentID := AppKey, AppSecret, AgentID
+	originalAppKey, originalSecret, originalAgentID, originalLookupMode := AppKey, AppSecret, AgentID, LookupMode
 	t.Cleanup(func() {
 		AppKey, AppSecret, AgentID = originalAppKey, originalSecret, originalAgentID
+		LookupMode = originalLookupMode
 	})
 
 	AppKey, AppSecret, AgentID = "key", "secret", "1"
+	LookupMode = LookupModeNone
 	if !Valid() {
 		t.Fatal("Valid() = false with complete credentials")
 	}
 	AgentID = ""
 	if Valid() {
 		t.Fatal("Valid() = true with a missing agent ID")
+	}
+	AgentID = "1"
+	LookupMode = "unsupported"
+	if Valid() {
+		t.Fatal("Valid() = true with an unsupported lookup mode")
+	}
+}
+
+func TestValidateWith(t *testing.T) {
+	for _, mode := range []string{LookupModeNone, LookupModeMobile} {
+		if err := ValidateWith("key", "secret", "1", mode); err != nil {
+			t.Fatalf("ValidateWith mode %q: %v", mode, err)
+		}
+	}
+
+	tests := []struct {
+		name       string
+		appKey     string
+		appSecret  string
+		agentID    string
+		lookupMode string
+		want       string
+	}{
+		{name: "missing app key", appSecret: "secret", agentID: "1", lookupMode: LookupModeNone, want: "DINGTALK_APP_KEY is required"},
+		{name: "invalid agent ID", appKey: "key", appSecret: "secret", agentID: "abc", lookupMode: LookupModeNone, want: "DINGTALK_AGENT_ID must be a positive base-10 integer"},
+		{name: "invalid lookup mode", appKey: "key", appSecret: "secret", agentID: "1", lookupMode: "phone", want: `DINGTALK_LOOKUP_MODE must be "none" or "mobile"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateWith(tt.appKey, tt.appSecret, tt.agentID, tt.lookupMode)
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("error = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }
 

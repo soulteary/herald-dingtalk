@@ -70,13 +70,13 @@ services:
 | `API_KEY` | If set, callers must send `X-API-Key` with this value | `` | No |
 | `DINGTALK_APP_KEY` | DingTalk app key (from DingTalk open platform) | `` | Yes (for send) |
 | `DINGTALK_APP_SECRET` | DingTalk app secret | `` | Yes (for send) |
-| `DINGTALK_AGENT_ID` | Agent ID for work notification | `` | Yes (for send) |
-| `DINGTALK_LOOKUP_MODE` | `none` = `to` is userid only; `mobile` = `to` can be userid or 11-digit mobile (requires Contact.User.mobile permission) | `none` | No |
+| `DINGTALK_AGENT_ID` | Positive base-10 Agent ID for work notification | `` | Yes (for send) |
+| `DINGTALK_LOOKUP_MODE` | Must be `none` (userid only) or `mobile` (userid or 11-digit mobile; requires Contact.User.mobile permission) | `none` | No |
 | `LOG_LEVEL` | Log level: trace, debug, info, warn, error | `info` | No |
 | `IDEMPOTENCY_TTL_SECONDS` | Idempotency cache TTL in seconds | `300` | No |
 | `MAX_REQUEST_BODY_BYTES` | Maximum HTTP request body size; values above 1 MiB or non-positive values use the default | `65536` | No |
 
-When any of `DINGTALK_APP_KEY`, `DINGTALK_APP_SECRET`, or `DINGTALK_AGENT_ID` is missing, `POST /v1/send` returns `503` with `error_code: "provider_down"`.
+When a credential is missing or has surrounding whitespace, `DINGTALK_AGENT_ID` is not a positive integer, or `DINGTALK_LOOKUP_MODE` is unsupported, both provider endpoints return `503` with `error_code: "provider_down"`. The startup warning identifies the invalid variable without printing credential values.
 
 Use `GET /healthz` as the liveness probe and `GET /readyz` as the readiness probe. The container image runs as a non-root user and includes a Docker health check against `/healthz`.
 

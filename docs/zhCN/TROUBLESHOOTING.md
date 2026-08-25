@@ -56,13 +56,13 @@
 
 ### 原因
 
-启动时 herald-dingtalk 会检查三个钉钉配置是否均非空。若 `DINGTALK_APP_KEY`、`DINGTALK_APP_SECRET`、`DINGTALK_AGENT_ID` 任一未设置，则不会初始化钉钉客户端，所有发送请求都会返回 503。
+启动时 herald-dingtalk 会校验完整的钉钉配置。凭证缺失或包含首尾空白、`DINGTALK_AGENT_ID` 不是十进制正整数，或 `DINGTALK_LOOKUP_MODE` 不是 `none`/`mobile` 时，均不会初始化钉钉客户端。
 
 ### 处理
 
 1. 补全上述三个环境变量并重启进程（或容器）。
-2. 确认运行时确实能读到这些变量（无拼写错误，Docker/K8s 传参正确）。
-3. 查看启动日志：若凭证缺失，会打印「未配置钉钉，/v1/send 将返回 503」类警告。
+2. 确认值没有首尾空白、AgentID 为正整数，查询模式严格为 `none` 或 `mobile`。
+3. 查看启动日志定位无效变量；警告不会输出凭证值。
 
 ---
 
