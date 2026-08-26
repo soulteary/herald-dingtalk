@@ -1,7 +1,7 @@
 # herald-dingtalk
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/go-1.26+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/go-1.26.6+-blue.svg)](https://golang.org)
 [![Go Report Card](.github/goreportcard.svg)](.github/goreportcard-report.md)
 
 ## Multi-language Documentation
@@ -10,14 +10,14 @@
 
 DingTalk notification adapter for [Herald](https://github.com/soulteary/herald). Herald forwards verification codes over HTTP to this service; herald-dingtalk calls the DingTalk work notification API to deliver messages. All DingTalk credentials and business logic live in this project only—Herald does not hold any DingTalk credentials.
 
-The HTTP server uses Fiber v3.5.0 and the matching v2 module lines of the Fiber-facing kit packages. Building from source requires Go 1.26 or later.
+The HTTP server uses Fiber v3.5.0 and the matching v2 module lines of the Fiber-facing kit packages. Building from source requires Go 1.26.6 or later.
 
 ## Core Features
 
 - **Herald HTTP Provider contract**: Implements the same HTTP send contract as Herald's external provider; request/response align with [provider-kit](https://github.com/soulteary/provider-kit) `HTTPSendRequest` / `HTTPSendResponse`.
 - **Optional API Key auth**: When `API_KEY` is set, Herald must send `X-API-Key`; otherwise no auth required.
 - **Idempotency**: Coalesces concurrent requests with the same key and caches successful results within the TTL. Reusing a key with different send content returns `409 idempotency_conflict`.
-- **Graceful shutdown**: On `SIGINT` or `SIGTERM`, server stops accepting new requests and shuts down with a 10s timeout.
+- **Graceful shutdown**: On `SIGINT` or `SIGTERM`, server stops accepting new requests and allows up to 35 seconds for in-flight requests to finish.
 - **Hardened service boundary**: Constant-time API key verification, a bounded request body, HTTP timeouts, request IDs, security headers, and panic recovery.
 
 ## Architecture
@@ -81,6 +81,19 @@ Herald does not hold any DingTalk credentials.
 
 ### Build & run (binary)
 
+Download a platform binary and `checksums.txt` from [GitHub Releases](https://github.com/soulteary/herald-dingtalk/releases). For example, after v1.0.0 is published:
+
+```bash
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/herald-dingtalk-linux-amd64
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/checksums.txt
+grep 'herald-dingtalk-linux-amd64$' checksums.txt | sha256sum -c -
+chmod +x herald-dingtalk-linux-amd64
+./herald-dingtalk-linux-amd64 --version
+# 1.0.0
+```
+
+To build from source:
+
 ```bash
 go build -o herald-dingtalk .
 ./herald-dingtalk
@@ -93,12 +106,12 @@ With DingTalk credentials in env, `POST /v1/send` will send work notifications t
 ### Run with Docker
 
 ```bash
-docker build -t herald-dingtalk .
+docker pull ghcr.io/soulteary/herald-dingtalk:v1.0.0
 docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  herald-dingtalk
+  ghcr.io/soulteary/herald-dingtalk:v1.0.0
 ```
 
 Optional: add `-e API_KEY=your_shared_secret` and set `HERALD_DINGTALK_API_KEY` to the same value on Herald.
@@ -107,6 +120,7 @@ Optional: add `-e API_KEY=your_shared_secret` and set `HERALD_DINGTALK_API_KEY` 
 
 - **[Documentation Index (English)](docs/enUS/README.md)** – [API](docs/enUS/API.md) | [Deployment](docs/enUS/DEPLOYMENT.md) | [Operations](docs/enUS/OPERATIONS.md) | [Troubleshooting](docs/enUS/TROUBLESHOOTING.md) | [Security](docs/enUS/SECURITY.md)
 - **[文档索引（中文）](docs/zhCN/README.md)** – [API](docs/zhCN/API.md) | [部署](docs/zhCN/DEPLOYMENT.md) | [运维](docs/zhCN/OPERATIONS.md) | [故障排查](docs/zhCN/TROUBLESHOOTING.md) | [安全](docs/zhCN/SECURITY.md)
+- **[Changelog](CHANGELOG.md)** – Release history and upgrade notes.
 
 ## Testing
 
@@ -127,7 +141,7 @@ Coverage includes configuration validation, idempotency and concurrency behavior
 
 ## Operation
 
-- **Graceful shutdown**: On `SIGINT` or `SIGTERM`, the server stops accepting new requests and shuts down with a 10s timeout. Logs `"shutting down"` and any shutdown error.
+- **Graceful shutdown**: On `SIGINT` or `SIGTERM`, the server stops accepting new requests and allows up to 35 seconds for in-flight requests to finish. Logs `"shutting down"` and any shutdown error.
 - **Probes**: Use `/healthz` for liveness and `/readyz` for readiness. Readiness is `503` until DingTalk credentials are configured.
 - **HTTP boundary**: Responses include an `X-Request-ID` and security headers. Bodies default to 64 KiB, reads to 10s, writes to 35s, and idle connections to 60s.
 - **Logging**: Structured JSON logs via [logger-kit](https://github.com/soulteary/logger-kit). Recipient identifiers, mobile numbers, user IDs, OAuth codes, API keys, and request bodies are not logged.

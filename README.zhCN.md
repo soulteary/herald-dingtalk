@@ -1,7 +1,7 @@
 # herald-dingtalk
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/go-1.26+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/go-1.26.6+-blue.svg)](https://golang.org)
 [![Go Report Card](https://goreportcard.com/badge/github.com/soulteary/herald-dingtalk)](https://goreportcard.com/report/github.com/soulteary/herald-dingtalk)
 
 ## 多语言文档
@@ -10,7 +10,7 @@
 
 herald-dingtalk 是 [Herald](https://github.com/soulteary/herald) 的钉钉通知适配器。Herald 通过 HTTP 将验证码请求转发到本服务，本服务再调用钉钉工作通知 API 下发消息。所有钉钉凭证与业务逻辑仅存在于本项目中，Herald 不保存任何钉钉凭证。
 
-HTTP 服务使用 Fiber v3.5.0 及与之匹配的 Fiber 相关 kit v2 模块版本。从源码构建需要 Go 1.26 或更高版本。
+HTTP 服务使用 Fiber v3.5.0 及与之匹配的 Fiber 相关 kit v2 模块版本。从源码构建需要 Go 1.26.6 或更高版本。
 
 ## 核心特性
 
@@ -81,6 +81,19 @@ Herald 不保存任何钉钉凭证。
 
 ### 构建与运行（二进制）
 
+可以从 [GitHub Releases](https://github.com/soulteary/herald-dingtalk/releases) 下载对应平台的二进制文件和 `checksums.txt`。例如 v1.0.0 发布后：
+
+```bash
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/herald-dingtalk-linux-amd64
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/checksums.txt
+grep 'herald-dingtalk-linux-amd64$' checksums.txt | sha256sum -c -
+chmod +x herald-dingtalk-linux-amd64
+./herald-dingtalk-linux-amd64 --version
+# 1.0.0
+```
+
+从源码构建：
+
 ```bash
 go build -o herald-dingtalk .
 ./herald-dingtalk
@@ -93,12 +106,12 @@ go build -o herald-dingtalk .
 ### 使用 Docker 运行
 
 ```bash
-docker build -t herald-dingtalk .
+docker pull ghcr.io/soulteary/herald-dingtalk:v1.0.0
 docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  herald-dingtalk
+  ghcr.io/soulteary/herald-dingtalk:v1.0.0
 ```
 
 可选：增加 `-e API_KEY=your_shared_secret`，并在 Herald 侧将 `HERALD_DINGTALK_API_KEY` 设为相同值。
@@ -107,6 +120,7 @@ docker run -d --name herald-dingtalk -p 8083:8083 \
 
 - **[Documentation Index (English)](docs/enUS/README.md)** – [API](docs/enUS/API.md) | [Deployment](docs/enUS/DEPLOYMENT.md) | [Operations](docs/enUS/OPERATIONS.md) | [Troubleshooting](docs/enUS/TROUBLESHOOTING.md) | [Security](docs/enUS/SECURITY.md)
 - **[文档索引（中文）](docs/zhCN/README.md)** – [API](docs/zhCN/API.md) | [部署](docs/zhCN/DEPLOYMENT.md) | [运维](docs/zhCN/OPERATIONS.md) | [故障排查](docs/zhCN/TROUBLESHOOTING.md) | [安全](docs/zhCN/SECURITY.md)
+- **[更新日志](CHANGELOG.md)** – 版本历史与升级提示。
 
 ## 测试
 

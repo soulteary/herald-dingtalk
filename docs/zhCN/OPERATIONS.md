@@ -4,11 +4,11 @@
 
 ## 生产检查清单
 
-- 使用带版本的发布镜像，例如 `ghcr.io/soulteary/herald-dingtalk:v1.2.3`；生产环境不要依赖可变的 `latest` 标签。
+- 使用带版本的发布镜像 `ghcr.io/soulteary/herald-dingtalk:v1.0.0`；生产环境不要依赖可变的 `latest` 标签。
 - 通过密钥管理系统注入 `DINGTALK_APP_KEY`、`DINGTALK_APP_SECRET`、`DINGTALK_AGENT_ID` 和 `API_KEY`，不要把真实值写入清单或代码库。
 - 将服务放在私有网络中，只允许 Herald 或经过认证的网关访问 `/v1/send` 和 `/v1/resolve`。
 - `/healthz` 用于存活探测，`/readyz` 用于就绪探测。就绪探针只校验本地配置，不会调用钉钉。
-- 为关闭过程预留至少 35 秒。进程收到 `SIGINT` 或 `SIGTERM` 后停止接收新连接，并等待在途请求，最长 35 秒，高于请求允许的 30 秒最大超时。
+- 为编排终止过程预留至少 40 秒。进程收到 `SIGINT` 或 `SIGTERM` 后停止接收新连接，并等待在途请求，最长 35 秒，高于请求允许的 30 秒最大超时。
 - 使用多副本前先确定重试去重方案；幂等缓存仅位于单个进程内。
 
 ## Kubernetes 参考清单
@@ -44,7 +44,7 @@ spec:
       terminationGracePeriodSeconds: 40
       containers:
         - name: herald-dingtalk
-          image: ghcr.io/soulteary/herald-dingtalk:v1.2.3
+          image: ghcr.io/soulteary/herald-dingtalk:v1.0.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:
@@ -165,8 +165,8 @@ curl -i "$BASE_URL/v1/send" \
 | `409 idempotency_conflict` | 同一个 key 被用于不同内容 | 为新的逻辑消息生成新 key；重试时不要修改原请求。 |
 | `413` | 请求超过 `MAX_REQUEST_BODY_BYTES` | 缩小负载；只有评估 1 MiB 上限和内存影响后才提高限制。 |
 | `415 unsupported_media_type` | 请求不是 `application/json` | 设置 `Content-Type: application/json`。 |
-| `429 rate_limited` | 当前进程达到并发上限 | 遵守 `Retry-After`，使用相同幂等键重试，并检查延迟和容量。 |
-| `502 send_failed` | 钉钉 token 或发送 API 失败 | 用请求 ID 关联日志，再检查钉钉状态、凭证、权限和配额。 |
+| `429 rate_limited` | 当前进程达到并发上限，或钉钉对操作实施限流 | 存在 `Retry-After` 时遵守等待时间，使用相同幂等键重试，并检查本地容量与钉钉配额。 |
+| `502 send_failed` / `resolve_failed` | 钉钉上游 API 调用失败 | 用请求 ID 关联日志，再检查钉钉状态、权限和配额；凭证被拒绝会单独返回 `503 provider_down`。 |
 | `503 provider_down` | 本地钉钉配置无效 | 检查 `/readyz` 和启动日志，修正配置后重启。 |
 | `504 timeout` | 请求或钉钉操作超过截止时间 | 使用相同幂等键重试；提高超时前先检查上游延迟。 |
 
