@@ -186,6 +186,45 @@ func TestStoreWaiterHonorsContextCancellation(t *testing.T) {
 	close(release)
 }
 
+func TestStoreLeaderCancellationDoesNotAbortSharedOperation(t *testing.T) {
+	store := NewStore(300)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+
+	ctx, cancel := context.WithCancel(context.Background())
+	leaderDone := make(chan error, 1)
+	go func() {
+		_, _, err := store.Do(ctx, "key", "fingerprint", func() Result {
+			calls.Add(1)
+			close(started)
+			<-release
+			return successResult("message-1")
+		})
+		leaderDone <- err
+	}()
+	<-started
+	cancel()
+	if err := <-leaderDone; !errors.Is(err, context.Canceled) {
+		t.Fatalf("leader error = %v, want context.Canceled", err)
+	}
+
+	close(release)
+	result, outcome, err := store.Do(context.Background(), "key", "fingerprint", func() Result {
+		calls.Add(1)
+		return successResult("message-2")
+	})
+	if err != nil || result.Response.MessageID != "message-1" {
+		t.Fatalf("shared result = %#v, %q, %v", result, outcome, err)
+	}
+	if outcome != OutcomeShared && outcome != OutcomeCached {
+		t.Fatalf("outcome = %q, want shared or cached", outcome)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("calls = %d, want 1", calls.Load())
+	}
+}
+
 func TestStoreExpiresAndEvictsEntries(t *testing.T) {
 	now := time.Unix(100, 0)
 	clock := func() time.Time { return now }
@@ -354,16 +393,12 @@ func TestStoreInFlightWaiterCancellation(t *testing.T) {
 
 func TestStoreCleansUpPanickingLeader(t *testing.T) {
 	store := NewStore(300)
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Error("expected leader panic")
-			}
-		}()
-		_, _, _ = store.Do(context.Background(), "key", "fingerprint", func() Result {
-			panic("boom")
-		})
-	}()
+	_, _, err := store.Do(context.Background(), "key", "fingerprint", func() Result {
+		panic("boom")
+	})
+	if !errors.Is(err, ErrAborted) {
+		t.Fatalf("error = %v, want ErrAborted", err)
+	}
 	if len(store.inFlight) != 0 {
 		t.Fatalf("in-flight calls = %d, want 0", len(store.inFlight))
 	}

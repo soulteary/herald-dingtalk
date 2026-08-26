@@ -81,10 +81,21 @@ func SendHandler(c fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idempo
 
 	requestCtx, cancel := requestContext(c, req.TimeoutSeconds)
 	defer cancel()
+	// The shared operation must not inherit the first caller's cancellation: a
+	// timed-out leader may leave other callers waiting on the same idempotency
+	// key. Preserve request values, but give the operation its own bounded
+	// lifetime. Store.Do executes this closure only for the elected leader.
+	operationBase := c.Context()
+	if req.IdempotencyKey != "" {
+		operationBase = context.WithoutCancel(operationBase)
+	}
+	operationTimeout := requestTimeout(req.TimeoutSeconds)
 
 	fingerprint := requestFingerprint(req)
 	result, outcome, err := idemStore.Do(requestCtx, req.IdempotencyKey, fingerprint, func() idempotency.Result {
-		return sendOnce(requestCtx, req, dingtalkClient, log)
+		operationCtx, operationCancel := context.WithTimeout(operationBase, operationTimeout)
+		defer operationCancel()
+		return sendOnce(operationCtx, req, dingtalkClient, log)
 	})
 	if err != nil {
 		if errors.Is(err, idempotency.ErrConflict) {
