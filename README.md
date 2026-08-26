@@ -86,6 +86,8 @@ go build -o herald-dingtalk .
 ./herald-dingtalk
 ```
 
+Print the embedded build version with `./herald-dingtalk --version`.
+
 With DingTalk credentials in env, `POST /v1/send` will send work notifications to the given userid.
 
 ### Run with Docker

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -33,6 +34,14 @@ func showBanner() {
 		),
 	)
 	time.Sleep(time.Millisecond) // Don't ask why, but this fixes the docker-compose log
+}
+
+func printVersion(w io.Writer) {
+	_, _ = fmt.Fprintln(w, version.Version)
+}
+
+func versionRequested(args []string) bool {
+	return len(args) == 1 && (args[0] == "--version" || args[0] == "-version")
 }
 
 func newApp() *fiber.App {
@@ -91,6 +100,10 @@ func serve(app *fiber.App, listener net.Listener, quit <-chan os.Signal, timeout
 }
 
 func main() {
+	if versionRequested(os.Args[1:]) {
+		printVersion(os.Stdout)
+		return
+	}
 	showBanner()
 	level := logger.ParseLevelFromEnv("LOG_LEVEL", logger.InfoLevel)
 	log := logger.New(logger.Config{
