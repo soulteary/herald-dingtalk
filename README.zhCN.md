@@ -10,7 +10,7 @@
 
 herald-dingtalk 是 [Herald](https://github.com/soulteary/herald) 的钉钉通知适配器。Herald 通过 HTTP 将验证码请求转发到本服务，本服务再调用钉钉工作通知 API 下发消息。所有钉钉凭证与业务逻辑仅存在于本项目中，Herald 不保存任何钉钉凭证。
 
-HTTP 服务使用 Fiber v3.4.0 及与之匹配的 Fiber 相关 kit v2 模块版本。从源码构建需要 Go 1.26 或更高版本。
+HTTP 服务使用 Fiber v3.5.0 及与之匹配的 Fiber 相关 kit v2 模块版本。从源码构建需要 Go 1.26 或更高版本。
 
 ## 核心特性
 
