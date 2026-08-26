@@ -480,11 +480,52 @@ func TestSendHandler_MapsUpstreamFailureToBadGateway(t *testing.T) {
 		t.Errorf("status = %d, want 502", resp.StatusCode)
 	}
 	var out struct {
-		ErrorCode string `json:"error_code"`
+		ErrorCode    string `json:"error_code"`
+		ErrorMessage string `json:"error_message"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	if out.ErrorCode != "send_failed" {
 		t.Errorf("error_code = %q, want send_failed", out.ErrorCode)
+	}
+	if strings.Contains(out.ErrorMessage, "upstream failure") {
+		t.Errorf("raw upstream error leaked: %q", out.ErrorMessage)
+	}
+}
+
+func TestSendHandler_MapsRejectedCredentialsToProviderDown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("credential detail"))
+	}))
+	defer server.Close()
+
+	client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	app := fiber.New()
+	app.Post("/v1/send", func(c fiber.Ctx) error {
+		return SendHandler(c, client, idempotency.NewStore(300), logger.New(logger.Config{Level: logger.Disabled}))
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/send", bytes.NewBufferString(`{"to":"userid123","body":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+	var out struct {
+		ErrorCode    string `json:"error_code"`
+		ErrorMessage string `json:"error_message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.ErrorCode != "provider_down" {
+		t.Fatalf("error_code = %q, want provider_down", out.ErrorCode)
+	}
+	if strings.Contains(out.ErrorMessage, "credential detail") {
+		t.Fatalf("raw upstream detail leaked: %q", out.ErrorMessage)
 	}
 }
 
@@ -664,7 +705,24 @@ func TestSendOnceMapsMobileLookupErrors(t *testing.T) {
 
 	client = dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: fixedErrorTransport{err: errors.New("lookup failed")}})
 	result = sendOnce(context.Background(), req, client, log)
-	if result.StatusCode != http.StatusBadRequest || result.Response.ErrorCode != "invalid_destination" {
+	if result.StatusCode != http.StatusBadGateway || result.Response.ErrorCode != "send_failed" {
 		t.Fatalf("failed lookup result = %#v", result)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gettoken":
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "access_token": "token", "expires_in": 7200})
+		case "/topapi/v2/user/getbymobile":
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 60121, "errmsg": "user not found"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client = dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	result = sendOnce(context.Background(), req, client, log)
+	if result.StatusCode != http.StatusBadRequest || result.Response.ErrorCode != "invalid_destination" {
+		t.Fatalf("invalid destination result = %#v", result)
 	}
 }

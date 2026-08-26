@@ -63,11 +63,12 @@ Uses DingTalk [OAuth2](https://open.dingtalk.com/document/connection/oauth2-0-au
 | error_code | HTTP status | Description |
 |------------|-------------|-------------|
 | `unauthorized` | 401 | `API_KEY` is set but `X-API-Key` is missing or invalid. |
-| `rate_limited` | 429 | This process has reached `MAX_CONCURRENT_REQUESTS`; retry after the number of seconds in `Retry-After`. |
+| `rate_limited` | 429 | This process has reached `MAX_CONCURRENT_REQUESTS`, or DingTalk rejected the exchange because of rate limiting. |
 | `unsupported_media_type` | 415 | `Content-Type` is not `application/json`. |
 | `invalid_request` | 400 | Body parse error, or `auth_code` is empty, oversized, or contains surrounding whitespace/control characters. |
-| `provider_down` | 503 | DingTalk credentials or lookup mode fail local validation. |
-| `resolve_failed` | 400 | OAuth2 exchange failed (expired/invalid code, etc.). |
+| `provider_down` | 503 | DingTalk configuration fails local validation, or DingTalk rejects the configured credentials. |
+| `resolve_failed` | 400 / 502 | The authorization code is invalid/expired (400), or the DingTalk OAuth service fails (502). |
+| `timeout` | 504 | The DingTalk OAuth exchange timed out. |
 
 ---
 
@@ -149,12 +150,12 @@ Send a message to a DingTalk user via the work notification API. Called by Heral
 | error_code | HTTP status | Description |
 |------------|-------------|-------------|
 | `unauthorized` | 401 | `API_KEY` is set but `X-API-Key` is missing or invalid. |
-| `rate_limited` | 429 | This process has reached `MAX_CONCURRENT_REQUESTS`; retry after the number of seconds in `Retry-After`. |
+| `rate_limited` | 429 | This process has reached `MAX_CONCURRENT_REQUESTS`, or DingTalk rejected the operation because of rate limiting. |
 | `unsupported_media_type` | 415 | `Content-Type` is not `application/json`. |
 | `invalid_request` | 400 | Invalid JSON, unsupported channel, an oversized idempotency key, or `timeout_seconds` outside 0–30. |
-| `invalid_destination` | 400 | `to` is missing, oversized, or contains surrounding whitespace/control characters. |
+| `invalid_destination` | 400 | `to` is invalid locally, or DingTalk reports that the destination is unavailable. |
 | `idempotency_conflict` | 409 | Header/body keys differ, or a key is reused with different send content. |
-| `provider_down` | 503 | DingTalk credentials or lookup mode fail local validation. |
+| `provider_down` | 503 | DingTalk configuration fails local validation, or DingTalk rejects the configured credentials. |
 | `send_failed` | 502 | DingTalk API error (e.g. token failure, send failure). |
 | `timeout` | 504 | The request-level timeout expired or the DingTalk request was canceled. |
 

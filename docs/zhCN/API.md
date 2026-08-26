@@ -81,11 +81,12 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 | error_code | HTTP 状态 | 说明 |
 |------------|-----------|------|
 | `unauthorized` | 401 | 已配置 `API_KEY` 但未传或错误的 `X-API-Key`。 |
-| `rate_limited` | 429 | 当前进程已达到 `MAX_CONCURRENT_REQUESTS`；按 `Retry-After` 指定的秒数等待后重试。 |
+| `rate_limited` | 429 | 当前进程已达到 `MAX_CONCURRENT_REQUESTS`，或钉钉对 OAuth2 兑换实施限流。 |
 | `unsupported_media_type` | 415 | `Content-Type` 不是 `application/json`。 |
 | `invalid_request` | 400 | 请求体解析失败，或 `auth_code` 为空、过长、包含首尾空白/控制字符。 |
-| `provider_down` | 503 | 钉钉凭证或查询模式未通过本地校验。 |
-| `resolve_failed` | 400 | OAuth2 兑换失败（code 过期、无效等）。 |
+| `provider_down` | 503 | 钉钉配置未通过本地校验，或钉钉拒绝当前服务凭证。 |
+| `resolve_failed` | 400 / 502 | 授权码无效或过期时返回 400；钉钉 OAuth2 服务异常时返回 502。 |
+| `timeout` | 504 | 钉钉 OAuth2 兑换超时。 |
 
 ---
 
@@ -149,12 +150,12 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 | error_code | HTTP 状态 | 说明 |
 |------------|-----------|------|
 | `unauthorized` | 401 | 已配置 `API_KEY` 但未传或错误的 `X-API-Key`。 |
-| `rate_limited` | 429 | 当前进程已达到 `MAX_CONCURRENT_REQUESTS`；按 `Retry-After` 指定的秒数等待后重试。 |
+| `rate_limited` | 429 | 当前进程已达到 `MAX_CONCURRENT_REQUESTS`，或钉钉对发送操作实施限流。 |
 | `unsupported_media_type` | 415 | `Content-Type` 不是 `application/json`。 |
 | `invalid_request` | 400 | 非法 JSON、不支持的 channel、幂等键过长，或 `timeout_seconds` 超出 0–30。 |
-| `invalid_destination` | 400 | `to` 缺失、过长，或包含首尾空白/控制字符。 |
+| `invalid_destination` | 400 | `to` 未通过本地校验，或钉钉报告目标用户不可用。 |
 | `idempotency_conflict` | 409 | Header/body 中的 key 不一致，或同一 key 被用于不同发送内容。 |
-| `provider_down` | 503 | 钉钉凭证或查询模式未通过本地校验。 |
+| `provider_down` | 503 | 钉钉配置未通过本地校验，或钉钉拒绝当前服务凭证。 |
 | `send_failed` | 502 | 钉钉 API 调用失败（如 token 失败、发送失败）。 |
 | `timeout` | 504 | 请求级超时到期，或钉钉请求被取消。 |
 

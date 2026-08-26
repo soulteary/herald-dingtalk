@@ -50,8 +50,9 @@ func ResolveHandler(c fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.Lo
 	userid, err := dingtalkClient.ResolveAuthCode(c, req.AuthCode)
 	if err != nil {
 		log.Warn().Err(err).Msg("resolve failed: oauth2 error")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"ok": false, "error_code": "resolve_failed", "error_message": err.Error(),
+		status, code, message := mapDingTalkError(err, "resolve_failed")
+		return c.Status(status).JSON(fiber.Map{
+			"ok": false, "error_code": code, "error_message": message,
 		})
 	}
 	log.Info().Msg("resolve ok")
