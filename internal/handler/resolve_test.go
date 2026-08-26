@@ -187,3 +187,53 @@ func TestResolveHandler_MapsOAuthFailure(t *testing.T) {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
 }
+
+func TestResolveHandler_ClassifiesProviderFailures(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		status     int
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "rate limited", status: http.StatusTooManyRequests, wantStatus: http.StatusTooManyRequests, wantCode: "rate_limited"},
+		{name: "credentials rejected", status: http.StatusForbidden, wantStatus: http.StatusServiceUnavailable, wantCode: "provider_down"},
+		{name: "upstream unavailable", status: http.StatusBadGateway, wantStatus: http.StatusBadGateway, wantCode: "resolve_failed"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_ = json.NewEncoder(w).Encode(map[string]string{"message": "sensitive upstream detail"})
+			}))
+			defer server.Close()
+
+			client := dingtalk.NewClientWithHTTP("k", "s", "1", &http.Client{Transport: &redirectTransport{base: server}})
+			app := fiber.New()
+			app.Post("/v1/resolve", func(c fiber.Ctx) error {
+				return ResolveHandler(c, client, logger.New(logger.Config{Level: logger.Disabled}))
+			})
+			req := httptest.NewRequest(http.MethodPost, "/v1/resolve", bytes.NewBufferString(`{"auth_code":"code"}`))
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
+			}
+			var out struct {
+				ErrorCode    string `json:"error_code"`
+				ErrorMessage string `json:"error_message"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+				t.Fatal(err)
+			}
+			if out.ErrorCode != tt.wantCode {
+				t.Fatalf("error_code = %q, want %q", out.ErrorCode, tt.wantCode)
+			}
+			if strings.Contains(out.ErrorMessage, "sensitive upstream detail") {
+				t.Fatalf("raw upstream detail leaked: %q", out.ErrorMessage)
+			}
+		})
+	}
+}
