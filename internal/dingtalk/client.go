@@ -95,6 +95,72 @@ type apiError struct {
 	message   string
 }
 
+// ErrorCategory describes the stable failure classes handlers expose without
+// leaking raw DingTalk responses to callers.
+type ErrorCategory string
+
+const (
+	ErrorCategoryUpstream           ErrorCategory = "upstream"
+	ErrorCategoryInvalidRequest     ErrorCategory = "invalid_request"
+	ErrorCategoryInvalidDestination ErrorCategory = "invalid_destination"
+	ErrorCategoryRateLimited        ErrorCategory = "rate_limited"
+	ErrorCategoryProviderDown       ErrorCategory = "provider_down"
+	ErrorCategoryTimeout            ErrorCategory = "timeout"
+)
+
+type classifiedError struct {
+	category ErrorCategory
+	err      error
+}
+
+func (e *classifiedError) Error() string { return e.err.Error() }
+func (e *classifiedError) Unwrap() error { return e.err }
+
+func withCategory(category ErrorCategory, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &classifiedError{category: category, err: err}
+}
+
+// ClassifyError converts transport, HTTP, and DingTalk API failures into a
+// stable category suitable for HTTP status mapping.
+func ClassifyError(err error) ErrorCategory {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return ErrorCategoryTimeout
+	}
+	var classified *classifiedError
+	if errors.As(err, &classified) {
+		return classified.category
+	}
+	var apiErr *apiError
+	if errors.As(err, &apiErr) {
+		switch apiErr.code {
+		case 60011, 60121, 40104:
+			return ErrorCategoryInvalidDestination
+		case 40013, invalidTokenCode, expiredTokenCode:
+			return ErrorCategoryProviderDown
+		default:
+			return ErrorCategoryUpstream
+		}
+	}
+	var statusErr *httpStatusError
+	if errors.As(err, &statusErr) {
+		switch statusErr.status {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return ErrorCategoryProviderDown
+		case http.StatusTooManyRequests:
+			return ErrorCategoryRateLimited
+		default:
+			return ErrorCategoryUpstream
+		}
+	}
+	return ErrorCategoryUpstream
+}
+
 func (e *apiError) Error() string {
 	return fmt.Sprintf("%s: errcode=%d errmsg=%s", e.operation, e.code, e.message)
 }
@@ -301,7 +367,7 @@ func (c *Client) ResolveAuthCode(ctx context.Context, code string) (string, erro
 		return "", fmt.Errorf("oauth2 userAccessToken parse: %w", err)
 	}
 	if token.AccessToken == "" {
-		return "", responseMessageError("oauth2 userAccessToken", body, "empty access_token")
+		return "", withCategory(ErrorCategoryInvalidRequest, responseMessageError("oauth2 userAccessToken", body, "empty access_token"))
 	}
 
 	req, err = http.NewRequestWithContext(ctx, http.MethodGet, oauth2UserMeURL, nil)
@@ -361,7 +427,7 @@ func (c *Client) getUserIDByMobileWithToken(ctx context.Context, token, mobile s
 		return "", &apiError{operation: "getbymobile", code: response.ErrCode, message: response.ErrMsg}
 	}
 	if response.Result.UserID == "" {
-		return "", errors.New("getbymobile: no userid for mobile")
+		return "", withCategory(ErrorCategoryInvalidDestination, errors.New("getbymobile: no userid for mobile"))
 	}
 	return response.Result.UserID, nil
 }
@@ -398,9 +464,18 @@ func (c *Client) do(req *http.Request, operation string) ([]byte, error) {
 func oauthError(operation string, err error) error {
 	var statusErr *httpStatusError
 	if errors.As(err, &statusErr) {
-		return responseMessageError(operation, statusErr.body, fmt.Sprintf("HTTP %d", statusErr.status))
+		category := ErrorCategoryUpstream
+		switch statusErr.status {
+		case http.StatusBadRequest:
+			category = ErrorCategoryInvalidRequest
+		case http.StatusUnauthorized, http.StatusForbidden:
+			category = ErrorCategoryProviderDown
+		case http.StatusTooManyRequests:
+			category = ErrorCategoryRateLimited
+		}
+		return withCategory(category, responseMessageError(operation, statusErr.body, fmt.Sprintf("HTTP %d", statusErr.status)))
 	}
-	return fmt.Errorf("%s: %w", operation, err)
+	return withCategory(ClassifyError(err), fmt.Errorf("%s: %w", operation, err))
 }
 
 func responseMessageError(operation string, body []byte, fallback string) error {

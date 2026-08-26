@@ -222,6 +222,9 @@ func TestGetUserIDByMobile_EmptyUserid(t *testing.T) {
 	if err.Error() != "getbymobile: no userid for mobile" {
 		t.Errorf("err = %v", err)
 	}
+	if category := ClassifyError(err); category != ErrorCategoryInvalidDestination {
+		t.Errorf("category = %q, want %q", category, ErrorCategoryInvalidDestination)
+	}
 }
 
 func TestSendWorkNotify_InvalidAgentID(t *testing.T) {
@@ -425,6 +428,30 @@ func TestHTTPStatusErrorMessage(t *testing.T) {
 	err := (&httpStatusError{operation: "getbymobile", status: http.StatusBadGateway}).Error()
 	if err != "getbymobile: HTTP 502" {
 		t.Fatalf("error = %q", err)
+	}
+}
+
+func TestClassifyError(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		want ErrorCategory
+	}{
+		{name: "nil", err: nil, want: ""},
+		{name: "timeout", err: context.DeadlineExceeded, want: ErrorCategoryTimeout},
+		{name: "invalid destination", err: &apiError{code: 60121}, want: ErrorCategoryInvalidDestination},
+		{name: "invalid token", err: &apiError{code: invalidTokenCode}, want: ErrorCategoryProviderDown},
+		{name: "api upstream", err: &apiError{code: 500}, want: ErrorCategoryUpstream},
+		{name: "http unauthorized", err: &httpStatusError{status: http.StatusUnauthorized}, want: ErrorCategoryProviderDown},
+		{name: "http rate limited", err: &httpStatusError{status: http.StatusTooManyRequests}, want: ErrorCategoryRateLimited},
+		{name: "http upstream", err: &httpStatusError{status: http.StatusBadGateway}, want: ErrorCategoryUpstream},
+		{name: "explicit category", err: withCategory(ErrorCategoryInvalidRequest, errors.New("bad code")), want: ErrorCategoryInvalidRequest},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ClassifyError(tt.err); got != tt.want {
+				t.Fatalf("ClassifyError(%v) = %q, want %q", tt.err, got, tt.want)
+			}
+		})
 	}
 }
 

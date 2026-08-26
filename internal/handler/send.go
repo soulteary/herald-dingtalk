@@ -73,12 +73,9 @@ func sendOnce(ctx context.Context, req provider.HTTPSendRequest, dingtalkClient 
 	if config.LookupMode == config.LookupModeMobile && mobileLike.MatchString(req.To) {
 		resolved, err := dingtalkClient.GetUserIDByMobile(ctx, req.To)
 		if err != nil {
-			if isTimeoutError(err) {
-				log.Warn().Err(err).Msg("send timeout: mobile lookup timed out")
-				return failureResult(fiber.StatusGatewayTimeout, "timeout", "dingtalk request timed out")
-			}
-			log.Warn().Err(err).Msg("send invalid_destination: mobile lookup failed")
-			return failureResult(fiber.StatusBadRequest, "invalid_destination", "mobile lookup failed: "+err.Error())
+			log.Warn().Err(err).Msg("send: mobile lookup failed")
+			status, code, message := mapDingTalkError(err, "")
+			return failureResult(status, code, message)
 		}
 		destUserID = resolved
 		log.Debug().Msg("send: resolved mobile to userid")
@@ -87,10 +84,8 @@ func sendOnce(ctx context.Context, req provider.HTTPSendRequest, dingtalkClient 
 	taskID, err := dingtalkClient.SendWorkNotify(ctx, destUserID, content)
 	if err != nil {
 		log.Warn().Err(err).Msg("send_failed: dingtalk API error")
-		if isTimeoutError(err) {
-			return failureResult(fiber.StatusGatewayTimeout, "timeout", "dingtalk request timed out")
-		}
-		return failureResult(fiber.StatusBadGateway, "send_failed", err.Error())
+		status, code, message := mapDingTalkError(err, "")
+		return failureResult(status, code, message)
 	}
 
 	log.Info().Str("message_id", taskID).Msg("send ok")
