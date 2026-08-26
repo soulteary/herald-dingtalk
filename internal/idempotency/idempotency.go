@@ -1,6 +1,7 @@
 package idempotency
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"sync"
@@ -37,6 +38,7 @@ type entry struct {
 	fingerprint string
 	result      Result
 	expiresAt   time.Time
+	order       *list.Element
 }
 
 type call struct {
@@ -53,6 +55,7 @@ type Store struct {
 	mu         sync.Mutex
 	entries    map[string]entry
 	inFlight   map[string]*call
+	order      *list.List
 	ttl        time.Duration
 	maxEntries int
 	now        func() time.Time
@@ -76,6 +79,7 @@ func newStore(ttlSec, maxEntries int, now func() time.Time) *Store {
 	return &Store{
 		entries:    make(map[string]entry),
 		inFlight:   make(map[string]*call),
+		order:      list.New(),
 		ttl:        time.Duration(ttlSec) * time.Second,
 		maxEntries: maxEntries,
 		now:        now,
@@ -124,17 +128,30 @@ func (s *Store) Do(ctx context.Context, key, fingerprint string, fn func() Resul
 	s.inFlight[key] = active
 	s.mu.Unlock()
 
+	go s.execute(key, active, fn)
+	return waitForCall(ctx, active, OutcomeExecuted)
+}
+
+func (s *Store) execute(key string, active *call, fn func() Result) {
 	completed := false
 	defer func() {
 		if !completed {
+			_ = recover()
 			s.finish(key, active, Result{}, false, ErrAborted)
 		}
 	}()
-
 	result := fn()
 	s.finish(key, active, result, result.Response.OK, nil)
 	completed = true
-	return result, OutcomeExecuted, nil
+}
+
+func waitForCall(ctx context.Context, active *call, outcome Outcome) (Result, Outcome, error) {
+	select {
+	case <-active.done:
+		return active.result, outcome, active.err
+	case <-ctx.Done():
+		return Result{}, "", ctx.Err()
+	}
 }
 
 func (s *Store) finish(key string, active *call, result Result, cache bool, err error) {
@@ -146,20 +163,30 @@ func (s *Store) finish(key string, active *call, result Result, cache bool, err 
 	delete(s.inFlight, key)
 	if cache {
 		s.evictForInsertLocked()
+		order := s.order.PushBack(key)
 		s.entries[key] = entry{
 			fingerprint: active.fingerprint,
 			result:      result,
 			expiresAt:   s.now().Add(s.ttl),
+			order:       order,
 		}
 	}
 	close(active.done)
 }
 
 func (s *Store) pruneExpiredLocked(now time.Time) {
-	for key, cached := range s.entries {
-		if !now.Before(cached.expiresAt) {
-			delete(s.entries, key)
+	for front := s.order.Front(); front != nil; front = s.order.Front() {
+		key := front.Value.(string)
+		cached, ok := s.entries[key]
+		if !ok {
+			s.order.Remove(front)
+			continue
 		}
+		if now.Before(cached.expiresAt) {
+			return
+		}
+		delete(s.entries, key)
+		s.order.Remove(front)
 	}
 }
 
@@ -167,15 +194,8 @@ func (s *Store) evictForInsertLocked() {
 	if len(s.entries) < s.maxEntries {
 		return
 	}
-	var oldestKey string
-	var oldestExpiry time.Time
-	for key, cached := range s.entries {
-		if oldestKey == "" || cached.expiresAt.Before(oldestExpiry) {
-			oldestKey = key
-			oldestExpiry = cached.expiresAt
-		}
-	}
-	if oldestKey != "" {
-		delete(s.entries, oldestKey)
+	if oldest := s.order.Front(); oldest != nil {
+		delete(s.entries, oldest.Value.(string))
+		s.order.Remove(oldest)
 	}
 }

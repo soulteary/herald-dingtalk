@@ -22,10 +22,14 @@ const (
 // middleware and keeps the provider call bounded when the request omits an
 // explicit timeout.
 func requestContext(c fiber.Ctx, timeoutSeconds int) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(c.Context(), requestTimeout(timeoutSeconds))
+}
+
+func requestTimeout(timeoutSeconds int) time.Duration {
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = defaultRequestTimeoutSeconds
 	}
-	return context.WithTimeout(c.Context(), time.Duration(timeoutSeconds)*time.Second)
+	return time.Duration(timeoutSeconds) * time.Second
 }
 
 func hasJSONContentType(c fiber.Ctx) bool {
