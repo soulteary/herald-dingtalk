@@ -18,6 +18,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/logger-kit/v2"
+	version "github.com/soulteary/version-kit/v2"
 )
 
 func TestShowBanner(t *testing.T) {
@@ -29,6 +30,25 @@ func TestShowBanner(t *testing.T) {
 		}
 	})
 	showBanner()
+}
+
+func TestVersionCommand(t *testing.T) {
+	for _, args := range [][]string{{"--version"}, {"-version"}} {
+		if !versionRequested(args) {
+			t.Fatalf("versionRequested(%q) = false", args)
+		}
+	}
+	for _, args := range [][]string{nil, {}, {"--help"}, {"--version", "extra"}} {
+		if versionRequested(args) {
+			t.Fatalf("versionRequested(%q) = true", args)
+		}
+	}
+
+	var output bytes.Buffer
+	printVersion(&output)
+	if got, want := strings.TrimSpace(output.String()), version.Version; got != want {
+		t.Fatalf("version output = %q, want %q", got, want)
+	}
 }
 
 func TestNewAppEnforcesBodyLimit(t *testing.T) {

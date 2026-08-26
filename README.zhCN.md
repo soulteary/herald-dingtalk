@@ -86,6 +86,8 @@ go build -o herald-dingtalk .
 ./herald-dingtalk
 ```
 
+使用 `./herald-dingtalk --version` 可输出构建时注入的版本号。
+
 在环境变量中配置钉钉凭证后，`POST /v1/send` 会向指定 userid 发送工作通知。
 
 ### 使用 Docker 运行

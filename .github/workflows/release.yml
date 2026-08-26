@@ -72,7 +72,16 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           COMMIT=${{ steps.version.outputs.commit }}
           BUILD_DATE=${{ steps.version.outputs.build_date }}
-          LDFLAGS="-s -w -X 'github.com/soulteary/version-kit.Version=${VERSION}' -X 'github.com/soulteary/version-kit.Commit=${COMMIT}' -X 'github.com/soulteary/version-kit.BuildDate=${BUILD_DATE}'"
+          LDFLAGS="-s -w -X 'github.com/soulteary/version-kit/v2.Version=${VERSION}' -X 'github.com/soulteary/version-kit/v2.Commit=${COMMIT}' -X 'github.com/soulteary/version-kit/v2.BuildDate=${BUILD_DATE}'"
+
+          # Verify the linker symbols before producing cross-platform artifacts.
+          CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-verify .
+          ACTUAL_VERSION=$(./dist/herald-dingtalk-verify --version)
+          if [ "$ACTUAL_VERSION" != "$VERSION" ]; then
+            echo "Version metadata mismatch: got '$ACTUAL_VERSION', want '$VERSION'"
+            exit 1
+          fi
+          rm dist/herald-dingtalk-verify
 
           # Build for multiple platforms
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-linux-amd64 .
