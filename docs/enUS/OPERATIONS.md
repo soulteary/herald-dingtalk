@@ -8,7 +8,7 @@ This guide covers production rollout, verification, scaling, and incident triage
 - Inject `DINGTALK_APP_KEY`, `DINGTALK_APP_SECRET`, `DINGTALK_AGENT_ID`, and `API_KEY` from a secret store. Do not put live values in a manifest or repository.
 - Keep the service private. Allow only Herald or an authenticated gateway to reach `/v1/send` and `/v1/resolve`.
 - Use `/healthz` for liveness and `/readyz` for readiness. Readiness validates local configuration; it does not call DingTalk.
-- Allow at least 10 seconds for shutdown. The server stops accepting new connections on `SIGINT` or `SIGTERM` and waits up to 10 seconds for in-flight requests.
+- Allow at least 35 seconds for shutdown. The server stops accepting new connections on `SIGINT` or `SIGTERM` and waits up to 35 seconds for in-flight requests, which is longer than the maximum accepted 30-second request timeout.
 - Decide how retries will be deduplicated before using multiple replicas. The idempotency cache is process-local.
 
 ## Kubernetes reference manifest
@@ -41,7 +41,7 @@ spec:
       labels:
         app: herald-dingtalk
     spec:
-      terminationGracePeriodSeconds: 15
+      terminationGracePeriodSeconds: 40
       containers:
         - name: herald-dingtalk
           image: ghcr.io/soulteary/herald-dingtalk:v1.2.3

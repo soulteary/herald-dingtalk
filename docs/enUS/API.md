@@ -112,7 +112,7 @@ Send a message to a DingTalk user via the work notification API. Called by Heral
 | `params` | object | No | If `body` is empty and `params.code` exists, content becomes `"验证码：" + params.code`. |
 | `locale` | string | No | Optional. |
 | `subject` | string | No | Optional. |
-| `timeout_seconds` | integer | No | Per-request DingTalk timeout in seconds. Accepted range: 0–30; 0 uses the client default. |
+| `timeout_seconds` | integer | No | End-to-end DingTalk operation timeout in seconds. Accepted range: 0–30; 0 uses the server default of 25 seconds. |
 
 **Destination (`to`) support:**
 - **`DINGTALK_LOOKUP_MODE=none`** (default): `to` must be DingTalk **userid**.

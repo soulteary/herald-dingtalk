@@ -17,7 +17,7 @@ HTTP 服务使用 Fiber v3.4.0 及与之匹配的 Fiber 相关 kit v2 模块版�
 - **与 Herald HTTP Provider 协议一致**：实现 Herald 外部 Provider 的 HTTP 发送契约，请求/响应与 [provider-kit](https://github.com/soulteary/provider-kit) 的 `HTTPSendRequest` / `HTTPSendResponse` 对齐。
 - **可选 API Key 鉴权**：配置 `API_KEY` 后，Herald 需在请求头中携带 `X-API-Key`；未配置则无需鉴权。
 - **幂等**：合并相同 key 的并发请求，并在 TTL 内缓存成功结果；同一 key 对应不同发送内容时返回 `409 idempotency_conflict`。
-- **优雅关闭**：收到 `SIGINT` 或 `SIGTERM` 后停止接收新请求，并在 10 秒超时内完成关闭。
+- **优雅关闭**：收到 `SIGINT` 或 `SIGTERM` 后停止接收新请求，并在 35 秒超时内完成关闭。
 - **服务边界加固**：API Key 固定时长校验、请求体限制、HTTP 超时、请求 ID、安全响应头和 panic 恢复。
 
 ## 架构
@@ -125,7 +125,7 @@ go tool cover -html=coverage.out
 
 ## 运维
 
-- **优雅关闭**：收到 `SIGINT` 或 `SIGTERM` 后停止接收新请求，在 10 秒超时内完成关闭。会打印 `"shutting down"` 及关闭过程中的错误。
+- **优雅关闭**：收到 `SIGINT` 或 `SIGTERM` 后停止接收新请求，在 35 秒超时内完成关闭。会打印 `"shutting down"` 及关闭过程中的错误。
 - **探针**：`/healthz` 用于存活检查，`/readyz` 用于就绪检查；钉钉凭证未配置完整时就绪探针返回 `503`。
 - **HTTP 边界**：响应包含 `X-Request-ID` 和安全响应头；请求体默认限制为 64 KiB，读取、写入和空闲超时分别为 10、35 和 60 秒。
 - **日志**：通过 [logger-kit](https://github.com/soulteary/logger-kit) 输出结构化 JSON 日志，不记录接收者标识、手机号、userid、OAuth 授权码、API Key 或请求体。
