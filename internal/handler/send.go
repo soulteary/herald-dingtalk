@@ -38,82 +38,24 @@ type fingerprintPayload struct {
 // SendHandler handles POST /v1/send from Herald.
 func SendHandler(c fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idempotency.Store, log *logger.Logger) error {
 	log = observability.RequestLogger(c, log)
-	if !hasJSONContentType(c) {
-		log.Warn().Msg("send unsupported_media_type: application/json required")
-		return sendError(c, fiber.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json")
+	req, failure := validateSendRequest(c, log)
+	if failure != nil {
+		return failure.write(c)
+	}
+	if failure := parseIdempotencyKey(c, &req, log); failure != nil {
+		return failure.write(c)
 	}
 
-	var req provider.HTTPSendRequest
-	if err := c.Bind().Body(&req); err != nil {
-		log.Warn().Err(err).Msg("send invalid_request: body parse error")
-		return sendError(c, fiber.StatusBadRequest, "invalid_request", err.Error())
-	}
-	if req.Channel != "" && req.Channel != provider.ChannelDingTalk.String() {
-		log.Warn().Str("channel", req.Channel).Msg("send invalid_request: unsupported channel")
-		return sendError(c, fiber.StatusBadRequest, "invalid_request", "channel must be dingtalk")
-	}
-	req.Channel = provider.ChannelDingTalk.String()
-	if req.TimeoutSeconds < 0 || req.TimeoutSeconds > maxRequestTimeoutSeconds {
-		log.Warn().Int("timeout_seconds", req.TimeoutSeconds).Msg("send invalid_request: timeout out of range")
-		return sendError(c, fiber.StatusBadRequest, "invalid_request", "timeout_seconds must be between 0 and 30")
-	}
-	if !validBoundedToken(req.To, maxDestinationLength) {
-		log.Warn().Int("destination_length", len(req.To)).Msg("send invalid_destination: invalid to value")
-		return sendError(c, fiber.StatusBadRequest, "invalid_destination", "to must be 1-256 bytes without surrounding whitespace or control characters")
-	}
-
-	headerKey := c.Get("Idempotency-Key")
-	if req.IdempotencyKey != "" && headerKey != "" && req.IdempotencyKey != headerKey {
-		log.Warn().Msg("send idempotency_conflict: header and body keys differ")
-		return sendError(c, fiber.StatusConflict, "idempotency_conflict", "header and body idempotency keys differ")
-	}
-	if req.IdempotencyKey == "" {
-		req.IdempotencyKey = headerKey
-	}
-	if len(req.IdempotencyKey) > maxIdempotencyKeyLength {
-		log.Warn().Int("key_length", len(req.IdempotencyKey)).Msg("send invalid_request: idempotency key too long")
-		return sendError(c, fiber.StatusBadRequest, "invalid_request", "idempotency key must not exceed 256 bytes")
-	}
-	if req.IdempotencyKey != "" && !validBoundedToken(req.IdempotencyKey, maxIdempotencyKeyLength) {
-		log.Warn().Msg("send invalid_request: invalid idempotency key")
-		return sendError(c, fiber.StatusBadRequest, "invalid_request", "idempotency key must not contain surrounding whitespace or control characters")
-	}
-
-	requestCtx, cancel := requestContext(c, req.TimeoutSeconds)
-	defer cancel()
-	// The shared operation must not inherit the first caller's cancellation: a
-	// timed-out leader may leave other callers waiting on the same idempotency
-	// key. Preserve request values, but give the operation its own bounded
-	// lifetime. Store.Do executes this closure only for the elected leader.
-	operationBase := c.Context()
-	if req.IdempotencyKey != "" {
-		operationBase = context.WithoutCancel(operationBase)
-	}
-	operationTimeout := requestTimeout(req.TimeoutSeconds)
+	contexts := establishSendContexts(c, req)
+	defer contexts.cancel()
 
 	fingerprint := requestFingerprint(req)
-	result, outcome, err := idemStore.Do(requestCtx, req.IdempotencyKey, fingerprint, func() idempotency.Result {
-		operationCtx, operationCancel := context.WithTimeout(operationBase, operationTimeout)
+	result, outcome, err := idemStore.Do(contexts.request, req.IdempotencyKey, fingerprint, func() idempotency.Result {
+		operationCtx, operationCancel := contexts.operation()
 		defer operationCancel()
 		return sendOnce(operationCtx, req, dingtalkClient, log)
 	})
-	if err != nil {
-		if errors.Is(err, idempotency.ErrConflict) {
-			log.Warn().Msg("send idempotency_conflict: key reused with different request")
-			return sendError(c, fiber.StatusConflict, "idempotency_conflict", "idempotency key reused with a different request")
-		}
-		if isTimeoutError(err) {
-			return sendError(c, fiber.StatusGatewayTimeout, "timeout", "request timed out while waiting for an identical send")
-		}
-		log.Error().Err(err).Msg("send_failed: idempotency coordination failed")
-		return sendError(c, fiber.StatusInternalServerError, "send_failed", "idempotency coordination failed")
-	}
-	if outcome == idempotency.OutcomeCached || outcome == idempotency.OutcomeShared {
-		log.Debug().Str("outcome", string(outcome)).
-			Bool("cached_ok", result.Response.OK).Str("message_id", result.Response.MessageID).
-			Msg("send idempotent hit")
-	}
-	return writeSendResult(c, result)
+	return mapSendOutcome(c, result, outcome, err, log)
 }
 
 func sendOnce(ctx context.Context, req provider.HTTPSendRequest, dingtalkClient *dingtalk.Client, log *logger.Logger) idempotency.Result {
