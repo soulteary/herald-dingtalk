@@ -427,7 +427,7 @@ func (c *Client) getUserIDByMobileWithToken(ctx context.Context, token, mobile s
 		return "", &apiError{operation: "getbymobile", code: response.ErrCode, message: response.ErrMsg}
 	}
 	if response.Result.UserID == "" {
-		return "", errors.New("getbymobile: no userid for mobile")
+		return "", withCategory(ErrorCategoryInvalidDestination, errors.New("getbymobile: no userid for mobile"))
 	}
 	return response.Result.UserID, nil
 }

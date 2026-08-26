@@ -222,6 +222,9 @@ func TestGetUserIDByMobile_EmptyUserid(t *testing.T) {
 	if err.Error() != "getbymobile: no userid for mobile" {
 		t.Errorf("err = %v", err)
 	}
+	if category := ClassifyError(err); category != ErrorCategoryInvalidDestination {
+		t.Errorf("category = %q, want %q", category, ErrorCategoryInvalidDestination)
+	}
 }
 
 func TestSendWorkNotify_InvalidAgentID(t *testing.T) {

@@ -714,6 +714,10 @@ func TestSendOnceMapsMobileLookupErrors(t *testing.T) {
 		case "/gettoken":
 			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "access_token": "token", "expires_in": 7200})
 		case "/topapi/v2/user/getbymobile":
+			if r.URL.Query().Get("mobile") == "13900139000" {
+				_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 0, "result": map[string]any{"userid": ""}})
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": 60121, "errmsg": "user not found"})
 		default:
 			http.NotFound(w, r)
@@ -724,5 +728,11 @@ func TestSendOnceMapsMobileLookupErrors(t *testing.T) {
 	result = sendOnce(context.Background(), req, client, log)
 	if result.StatusCode != http.StatusBadRequest || result.Response.ErrorCode != "invalid_destination" {
 		t.Fatalf("invalid destination result = %#v", result)
+	}
+
+	req.To = "13900139000"
+	result = sendOnce(context.Background(), req, client, log)
+	if result.StatusCode != http.StatusBadRequest || result.Response.ErrorCode != "invalid_destination" {
+		t.Fatalf("empty user id result = %#v", result)
 	}
 }
