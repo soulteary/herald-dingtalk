@@ -11,6 +11,7 @@
 ### 核心文档
 
 - **[README.zhCN.md](../../README.zhCN.md)** - 项目概述与快速开始
+- **[CHANGELOG.md](../../CHANGELOG.md)** - 版本历史与升级提示
 
 ### 详细文档
 
@@ -74,6 +75,7 @@
 herald-dingtalk/
 ├── README.md              # 项目主文档（英文）
 ├── README.zhCN.md         # 项目主文档（中文）
+├── CHANGELOG.md           # 版本历史与升级提示
 ├── docs/
 │   ├── enUS/
 │   │   ├── README.md       # 文档索引（英文）

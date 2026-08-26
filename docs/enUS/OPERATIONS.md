@@ -4,11 +4,11 @@ This guide covers production rollout, verification, scaling, and incident triage
 
 ## Production checklist
 
-- Use a versioned release image such as `ghcr.io/soulteary/herald-dingtalk:v1.2.3`; avoid a mutable `latest` tag in production.
+- Use the versioned release image `ghcr.io/soulteary/herald-dingtalk:v1.0.0`; avoid a mutable `latest` tag in production.
 - Inject `DINGTALK_APP_KEY`, `DINGTALK_APP_SECRET`, `DINGTALK_AGENT_ID`, and `API_KEY` from a secret store. Do not put live values in a manifest or repository.
 - Keep the service private. Allow only Herald or an authenticated gateway to reach `/v1/send` and `/v1/resolve`.
 - Use `/healthz` for liveness and `/readyz` for readiness. Readiness validates local configuration; it does not call DingTalk.
-- Allow at least 35 seconds for shutdown. The server stops accepting new connections on `SIGINT` or `SIGTERM` and waits up to 35 seconds for in-flight requests, which is longer than the maximum accepted 30-second request timeout.
+- Configure at least 40 seconds of termination grace. The server stops accepting new connections on `SIGINT` or `SIGTERM` and waits up to 35 seconds for in-flight requests, which is longer than the maximum accepted 30-second request timeout.
 - Decide how retries will be deduplicated before using multiple replicas. The idempotency cache is process-local.
 
 ## Kubernetes reference manifest
@@ -44,7 +44,7 @@ spec:
       terminationGracePeriodSeconds: 40
       containers:
         - name: herald-dingtalk
-          image: ghcr.io/soulteary/herald-dingtalk:v1.2.3
+          image: ghcr.io/soulteary/herald-dingtalk:v1.0.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:
@@ -165,8 +165,8 @@ Keep the returned `X-Request-ID` and `message_id` with the rollout record. Searc
 | `409 idempotency_conflict` | One key was used for different content | Generate a new key for the new logical message; do not mutate a retried request. |
 | `413` | Request exceeds `MAX_REQUEST_BODY_BYTES` | Reduce the payload; raise the limit only after reviewing the 1 MiB maximum and memory impact. |
 | `415 unsupported_media_type` | Request is not `application/json` | Set `Content-Type: application/json`. |
-| `429 rate_limited` | This process reached its concurrency limit | Honor `Retry-After`, retry with the same idempotency key, and inspect latency/capacity. |
-| `502 send_failed` | DingTalk token or send API failed | Correlate by request ID, then check DingTalk status, credentials, permission, and quota. |
+| `429 rate_limited` | This process reached its concurrency limit, or DingTalk rate-limited the operation | Honor `Retry-After` when present, retry with the same idempotency key, and inspect local capacity and DingTalk quota. |
+| `502 send_failed` / `resolve_failed` | A DingTalk upstream API failed | Correlate by request ID, then check DingTalk status, permissions, and quota. Credential rejection is reported separately as `503 provider_down`. |
 | `503 provider_down` | Local DingTalk configuration is invalid | Check `/readyz` and startup logs, then fix configuration and restart. |
 | `504 timeout` | Request or DingTalk operation exceeded its deadline | Retry with the same idempotency key; inspect upstream latency before increasing the timeout. |
 

@@ -7,16 +7,29 @@
 ## 前置要求
 
 - **运行环境**：Linux / macOS / Windows（推荐 Linux 生产环境）。
-- **本地构建**：Go 1.26 或更高版本（参见 [go.mod](../../go.mod)）。
+- **本地构建**：Go 1.26.6 或更高版本（参见 [go.mod](../../go.mod)）。
 - **钉钉应用**：在钉钉开放平台已创建具备「工作通知」能力的企业内部应用，并获取 AppKey、AppSecret、AgentID。详见本文 [钉钉侧准备](#钉钉侧准备)。
 
 ---
 
 ## 一、二进制部署
 
-### 1.1 构建
+### 1.1 下载发布制品或构建
 
-在项目根目录执行：
+从 [GitHub Releases](https://github.com/soulteary/herald-dingtalk/releases) 下载对应平台的二进制文件和 `checksums.txt`：
+
+```bash
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/herald-dingtalk-linux-amd64
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/checksums.txt
+grep 'herald-dingtalk-linux-amd64$' checksums.txt | sha256sum -c -
+chmod +x herald-dingtalk-linux-amd64
+./herald-dingtalk-linux-amd64 --version
+# 1.0.0
+```
+
+发布页同时提供 Linux ARM64、macOS AMD64/ARM64 和 Windows AMD64/ARM64 二进制文件。
+
+从源码构建时，在项目根目录执行：
 
 ```bash
 go build -o herald-dingtalk .
@@ -25,7 +38,7 @@ go build -o herald-dingtalk .
 可选：注入版本信息（需 [version-kit](https://github.com/soulteary/version-kit) 等）：
 
 ```bash
-go build -ldflags "-w -s -X 'github.com/soulteary/version-kit/v2.Version=v1.0.0' -X 'github.com/soulteary/version-kit/v2.Commit=$(git rev-parse --short HEAD)'" -o herald-dingtalk .
+go build -ldflags "-w -s -X 'github.com/soulteary/version-kit/v2.Version=1.0.0' -X 'github.com/soulteary/version-kit/v2.Commit=$(git rev-parse --short HEAD)'" -o herald-dingtalk .
 ```
 
 ### 1.2 运行
@@ -53,22 +66,28 @@ export PORT=:8083
 
 ## 二、Docker 部署
 
-### 2.1 构建镜像
+### 2.1 获取镜像
 
-在项目根目录（含 `Dockerfile`、`go.mod`、`go.sum`）执行：
+生产部署应使用不可变的版本标签：
 
 ```bash
-docker build -t herald-dingtalk:latest .
+docker pull ghcr.io/soulteary/herald-dingtalk:v1.0.0
+```
+
+如需从源码构建，在项目根目录（含 `Dockerfile`、`go.mod`、`go.sum`）执行：
+
+```bash
+docker build -t herald-dingtalk:local .
 ```
 
 可选构建参数（用于版本信息）：
 
 ```bash
 docker build \
-  --build-arg VERSION=v1.0.0 \
+  --build-arg VERSION=1.0.0 \
   --build-arg COMMIT=$(git rev-parse --short HEAD) \
   --build-arg BUILD_DATE=$(date +%FT%T%z) \
-  -t herald-dingtalk:latest .
+  -t herald-dingtalk:local .
 ```
 
 ### 2.2 运行容器
@@ -80,7 +99,7 @@ docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  herald-dingtalk:latest
+  ghcr.io/soulteary/herald-dingtalk:v1.0.0
 ```
 
 启用 API Key 鉴权时，需与 Herald 侧 `HERALD_DINGTALK_API_KEY` 一致：
@@ -91,13 +110,13 @@ docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  herald-dingtalk:latest
+  ghcr.io/soulteary/herald-dingtalk:v1.0.0
 ```
 
 使用 `.env` 文件（项目内可复制 `.env.example` 为 `.env` 并填写）：
 
 ```bash
-docker run -d --name herald-dingtalk -p 8083:8083 --env-file .env herald-dingtalk:latest
+docker run -d --name herald-dingtalk -p 8083:8083 --env-file .env ghcr.io/soulteary/herald-dingtalk:v1.0.0
 ```
 
 ### 2.3 健康检查
@@ -120,8 +139,7 @@ curl -s http://localhost:8083/healthz
 ```yaml
 services:
   herald-dingtalk:
-    image: herald-dingtalk:latest
-    build: .
+    image: ghcr.io/soulteary/herald-dingtalk:v1.0.0
     ports:
       - "8083:8083"
     environment:
@@ -137,8 +155,7 @@ services:
 ```yaml
 services:
   herald-dingtalk:
-    image: herald-dingtalk:latest
-    build: .
+    image: ghcr.io/soulteary/herald-dingtalk:v1.0.0
     ports:
       - "8083:8083"
     env_file:

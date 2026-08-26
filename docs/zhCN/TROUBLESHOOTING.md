@@ -9,6 +9,7 @@
 - [401 Unauthorized](#401-unauthorized)
 - [invalid_destination](#invalid_destination)
 - [resolve_failed（OAuth2 兑换失败）](#resolve_failedoauth2-兑换失败)
+- [429 rate_limited 与 504 timeout](#429-rate_limited-与-504-timeout)
 - [幂等与日志](#幂等与日志)
 
 ## 收不到钉钉消息
@@ -92,17 +93,19 @@ herald-dingtalk 已配置 `API_KEY`，但请求未携带 `X-API-Key` 或携带�
 
 ### 现象
 
-- `POST /v1/send` 返回 HTTP 400，`error_code: "invalid_destination"`，`error_message: "to is required"`。
+- `POST /v1/send` 返回 HTTP 400，`error_code: "invalid_destination"`。
+- 本地校验失败时，`error_message` 为 `"to must be 1-256 bytes without surrounding whitespace or control characters"`；钉钉拒绝目标时返回稳定消息 `"dingtalk destination is not available"`。
 
 ### 原因
 
-- 请求体中 `to` 为空或未传。
-- 或当 `DINGTALK_LOOKUP_MODE=mobile` 时，`to` 为 11 位手机号但「根据手机号查询用户」失败（如未申请 Contact.User.mobile 权限、手机号不在企业通讯录等），会返回 `invalid_destination` 且 `error_message` 含 "mobile lookup failed"。
+- 请求体中的 `to` 为空、过长、包含首尾空白或控制字符。
+- 钉钉报告 userid 或手机号查询结果不可用，包括手机号查询成功但 userid 为空。
+- 客户端响应不会包含钉钉原始错误详情；结构化业务日志会在相同请求 ID 下记录上游错误。
 
 ### 处理
 
 1. 确保 Herald 在调用 herald-dingtalk 时传入非空的 `to`（即 destination）。默认下 `to` 需为钉钉 userid（可从 Warden、OAuth2 回调后 `/v1/resolve` 或用户库解析）。
-2. 若使用 `DINGTALK_LOOKUP_MODE=mobile`：在钉钉开放平台为应用申请 **Contact.User.mobile**（根据手机号查询用户）权限；确认手机号属于企业通讯录；查看日志中的 "mobile lookup failed" 详情。
+2. 若使用 `DINGTALK_LOOKUP_MODE=mobile`：在钉钉开放平台为应用申请 **Contact.User.mobile**（根据手机号查询用户）权限，确认手机号属于企业通讯录，并按请求 ID 检查 `send: mobile lookup failed` 日志事件。
 3. 检查「用户标识 → 钉钉 userid」的映射逻辑，避免产生空字符串。
 
 ---
@@ -111,7 +114,9 @@ herald-dingtalk 已配置 `API_KEY`，但请求未携带 `X-API-Key` 或携带�
 
 ### 现象
 
-- `POST /v1/resolve` 返回 HTTP 400，`error_code: "resolve_failed"`，`error_message` 含 oauth2 userAccessToken 或 users/me 相关错误。
+- 授权码无效或过期时返回 HTTP 400、`error_code: "resolve_failed"`，稳定消息为 `"invalid or expired dingtalk authorization code"`。
+- 钉钉 OAuth 上游异常时返回 HTTP 502、`error_code: "resolve_failed"`，消息为 `"dingtalk request failed"`。
+- OAuth 原始响应详情只记录在 `resolve failed: oauth2 error` 日志中，不返回给调用方。
 
 ### 原因
 
@@ -125,6 +130,22 @@ herald-dingtalk 已配置 `API_KEY`，但请求未携带 `X-API-Key` 或携带�
 
 ---
 
+## 429 rate_limited 与 504 timeout
+
+### 现象
+
+- HTTP 429、`error_code: "rate_limited"` 表示当前进程达到并发上限，或钉钉对操作实施限流。
+- HTTP 504、`error_code: "timeout"` 表示请求在等待期间或钉钉操作执行期间超过截止时间。
+
+### 处理
+
+1. 存在 `Retry-After` 时遵守等待时间；本地并发限制当前返回 `Retry-After: 1`。
+2. 重试同一条逻辑消息时沿用相同幂等键，避免调用方超时后后台操作实际完成而造成重复发送。
+3. 持续出现 429 时检查 `MAX_CONCURRENT_REQUESTS`、上游延迟、钉钉配额和副本数量。
+4. 提高调用方超时前先排查延迟；`timeout_seconds` 可接受 0–30，0 使用服务端默认的 25 秒。
+
+---
+
 ## 幂等与日志
 
 ### 幂等命中（缓存响应）
@@ -135,7 +156,7 @@ herald-dingtalk 已配置 `API_KEY`，但请求未携带 `X-API-Key` 或携带�
 
 ### 日志级别
 
-- **info**：可看到 `send ok`、`send_failed`、`resolve ok`、`resolve_failed` 以及 503/401 等。
+- **info**：可看到 `send ok`、`send_failed: dingtalk API error`、`send: mobile lookup failed`、`resolve ok`、`resolve failed: oauth2 error` 以及 503/401 等事件。
 - **debug**：还会看到 `send idempotent hit`、`send: resolved mobile to userid`（当 DINGTALK_LOOKUP_MODE=mobile 且 to 为手机号时）。将 `LOG_LEVEL=debug` 可确认重复请求是否被正确缓存。
 
 ### TTL

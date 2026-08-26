@@ -11,6 +11,7 @@ Welcome to the herald-dingtalk documentation. herald-dingtalk is the DingTalk no
 ### Core Documents
 
 - **[README.md](../../README.md)** - Project overview and quick start guide
+- **[CHANGELOG.md](../../CHANGELOG.md)** - Release history and upgrade notes
 
 ### Detailed Documents
 
@@ -74,6 +75,7 @@ Welcome to the herald-dingtalk documentation. herald-dingtalk is the DingTalk no
 herald-dingtalk/
 ├── README.md              # Main project document (English)
 ├── README.zhCN.md         # Main project document (Chinese)
+├── CHANGELOG.md           # Release history and upgrade notes
 ├── docs/
 │   ├── enUS/
 │   │   ├── README.md       # Documentation index (this file)

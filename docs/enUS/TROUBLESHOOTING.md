@@ -9,6 +9,7 @@ This guide helps you diagnose and resolve common issues with herald-dingtalk.
 - [401 Unauthorized](#401-unauthorized)
 - [invalid_destination](#invalid_destination)
 - [resolve_failed (OAuth2 exchange)](#resolve_failed-oauth2-exchange)
+- [429 rate_limited and 504 timeout](#429-rate_limited-and-504-timeout)
 - [Idempotency and Logs](#idempotency-and-logs)
 
 ## DingTalk Message Not Received
@@ -92,17 +93,19 @@ herald-dingtalk has `API_KEY` set, but the request either does not send `X-API-K
 
 ### Symptoms
 
-- `POST /v1/send` returns HTTP 400 with `error_code: "invalid_destination"`, `error_message: "to is required"`.
+- `POST /v1/send` returns HTTP 400 with `error_code: "invalid_destination"`.
+- Local validation returns `error_message: "to must be 1-256 bytes without surrounding whitespace or control characters"`. A destination rejected by DingTalk returns the stable message `"dingtalk destination is not available"`.
 
 ### Cause
 
-- The request body has an empty or missing `to` field.
-- Or when `DINGTALK_LOOKUP_MODE=mobile`, `to` is an 11-digit mobile but “query user by mobile” fails (e.g. Contact.User.mobile permission not granted, mobile not in org address book). Then herald-dingtalk returns `invalid_destination` with `error_message` containing “mobile lookup failed”.
+- The request body has an empty, oversized, whitespace-padded, or control-character-containing `to` field.
+- DingTalk reports that the userid or mobile lookup result is unavailable, including a successful mobile lookup with an empty userid.
+- Client responses deliberately do not include raw DingTalk error details. The structured application log records the upstream error under the same request ID.
 
 ### Solutions
 
 1. Ensure Herald sends a non-empty `to` (destination). By default `to` must be the DingTalk userid (from Warden, `/v1/resolve` after OAuth2 callback, or your user store).
-2. If using `DINGTALK_LOOKUP_MODE=mobile`: grant **Contact.User.mobile** (query user by mobile) permission in DingTalk open platform; confirm the mobile belongs to the org address book; check logs for “mobile lookup failed” details.
+2. If using `DINGTALK_LOOKUP_MODE=mobile`: grant **Contact.User.mobile** (query user by mobile) permission in DingTalk open platform, confirm the mobile belongs to the org address book, and inspect the `send: mobile lookup failed` log event by request ID.
 3. Check that the mapping from “user identifier” to “DingTalk userid” is correct and never yields an empty string.
 
 ---
@@ -111,7 +114,9 @@ herald-dingtalk has `API_KEY` set, but the request either does not send `X-API-K
 
 ### Symptoms
 
-- `POST /v1/resolve` returns HTTP 400 with `error_code: "resolve_failed"`, `error_message` mentioning oauth2 userAccessToken or users/me.
+- An invalid or expired code returns HTTP 400 with `error_code: "resolve_failed"` and the stable message `"invalid or expired dingtalk authorization code"`.
+- A DingTalk OAuth upstream failure returns HTTP 502 with `error_code: "resolve_failed"` and `"dingtalk request failed"`.
+- Raw OAuth response details are logged under `resolve failed: oauth2 error`; they are not returned to the caller.
 
 ### Cause
 
@@ -125,6 +130,22 @@ The DingTalk OAuth2 auth code could not be exchanged for userid. Common causes: 
 
 ---
 
+## 429 rate_limited and 504 timeout
+
+### Symptoms
+
+- HTTP 429 with `error_code: "rate_limited"` means either the per-process concurrency limit was reached or DingTalk rate-limited the operation.
+- HTTP 504 with `error_code: "timeout"` means the request deadline expired while waiting or during a DingTalk operation.
+
+### Solutions
+
+1. Honor `Retry-After` when it is present. The local concurrency limiter currently returns `Retry-After: 1`.
+2. Retry the same logical send with the same idempotency key so an operation that completed after the caller timed out is not sent twice.
+3. Investigate sustained 429 responses by checking `MAX_CONCURRENT_REQUESTS`, provider latency, DingTalk quota, and replica count.
+4. Investigate timeouts before raising caller deadlines; the accepted `timeout_seconds` range is 0–30 and 0 uses the 25-second server default.
+
+---
+
 ## Idempotency and Logs
 
 ### Idempotent hit (cached response)
@@ -135,7 +156,7 @@ If the same key is reused with different send content, the service returns `409 
 
 ### Log level
 
-- **info**: You see `send ok`, `send_failed`, `resolve ok`, `resolve_failed` (and 503/401 as above).
+- **info**: You see `send ok`, `send_failed: dingtalk API error`, `send: mobile lookup failed`, `resolve ok`, and `resolve failed: oauth2 error` (and 503/401 events as above).
 - **debug**: You also see `send idempotent hit` and `send: resolved mobile to userid` (when DINGTALK_LOOKUP_MODE=mobile and `to` is a mobile). Set `LOG_LEVEL=debug` to verify that repeated requests with the same idempotency key are being cached.
 
 ### TTL
