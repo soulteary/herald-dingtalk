@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/herald-dingtalk/internal/config"
