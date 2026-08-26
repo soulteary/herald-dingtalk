@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/herald-dingtalk/internal/config"
@@ -80,12 +79,8 @@ func SendHandler(c fiber.Ctx, dingtalkClient *dingtalk.Client, idemStore *idempo
 		return sendError(c, fiber.StatusBadRequest, "invalid_request", "idempotency key must not contain surrounding whitespace or control characters")
 	}
 
-	requestCtx := context.Context(c)
-	if req.TimeoutSeconds > 0 {
-		var cancel context.CancelFunc
-		requestCtx, cancel = context.WithTimeout(requestCtx, time.Duration(req.TimeoutSeconds)*time.Second)
-		defer cancel()
-	}
+	requestCtx, cancel := requestContext(c, req.TimeoutSeconds)
+	defer cancel()
 
 	fingerprint := requestFingerprint(req)
 	result, outcome, err := idemStore.Do(requestCtx, req.IdempotencyKey, fingerprint, func() idempotency.Result {

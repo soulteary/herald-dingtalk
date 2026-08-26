@@ -112,7 +112,7 @@ API Key 使用固定长度的常量时间比较。所有响应均包含 `X-Reque
 | `params` | object | 否 | 当 `body` 为空且存在 `params.code` 时，内容为「验证码：」+ params.code。 |
 | `locale` | string | 否 | 可选。 |
 | `subject` | string | 否 | 可选。 |
-| `timeout_seconds` | integer | 否 | 单次钉钉请求超时秒数，范围为 0–30；0 表示使用客户端默认值。 |
+| `timeout_seconds` | integer | 否 | 钉钉操作的端到端超时秒数，范围为 0–30；0 表示使用服务端默认值 25 秒。 |
 
 **destination（to）支持：**
 - **`DINGTALK_LOOKUP_MODE=none`**（默认）：`to` 仅支持钉钉 **userid**。

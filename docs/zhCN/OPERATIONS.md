@@ -8,7 +8,7 @@
 - 通过密钥管理系统注入 `DINGTALK_APP_KEY`、`DINGTALK_APP_SECRET`、`DINGTALK_AGENT_ID` 和 `API_KEY`，不要把真实值写入清单或代码库。
 - 将服务放在私有网络中，只允许 Herald 或经过认证的网关访问 `/v1/send` 和 `/v1/resolve`。
 - `/healthz` 用于存活探测，`/readyz` 用于就绪探测。就绪探针只校验本地配置，不会调用钉钉。
-- 为关闭过程预留至少 10 秒。进程收到 `SIGINT` 或 `SIGTERM` 后停止接收新连接，并等待在途请求，最长 10 秒。
+- 为关闭过程预留至少 35 秒。进程收到 `SIGINT` 或 `SIGTERM` 后停止接收新连接，并等待在途请求，最长 35 秒，高于请求允许的 30 秒最大超时。
 - 使用多副本前先确定重试去重方案；幂等缓存仅位于单个进程内。
 
 ## Kubernetes 参考清单
@@ -41,7 +41,7 @@ spec:
       labels:
         app: herald-dingtalk
     spec:
-      terminationGracePeriodSeconds: 15
+      terminationGracePeriodSeconds: 40
       containers:
         - name: herald-dingtalk
           image: ghcr.io/soulteary/herald-dingtalk:v1.2.3

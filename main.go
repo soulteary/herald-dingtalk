@@ -19,7 +19,9 @@ import (
 	version "github.com/soulteary/version-kit/v2"
 )
 
-const shutdownTimeout = 10 * time.Second
+// The shutdown budget exceeds the maximum accepted request timeout so a
+// request already in flight can finish before the server forces shutdown.
+const shutdownTimeout = 35 * time.Second
 
 var listenTCP = net.Listen
 
