@@ -4,13 +4,26 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing v* tag to build or rebuild (for example v1.1.0)'
+        required: true
+        type: string
+      update_aliases:
+        description: 'Also move stable major/minor/latest image aliases'
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 concurrency:
-  group: release-${{ github.ref }}
+  # Releases update shared major/minor/latest aliases. Serialize every release
+  # so an older run cannot finish last and overwrite aliases from a newer tag.
+  group: ${{ github.repository }}-release
   cancel-in-progress: false
 
 jobs:
@@ -26,6 +39,46 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+
+      - name: Resolve release ref
+        id: release
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            TAG="${INPUT_RELEASE_TAG}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+
+          # Docker tags cannot contain SemVer build metadata (`+...`), so the
+          # release contract accepts stable or pre-release SemVer only.
+          SEMVER_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*)|([0-9]*[A-Za-z-][0-9A-Za-z-]*))(\.((0|[1-9][0-9]*)|([0-9]*[A-Za-z-][0-9A-Za-z-]*)))*)?$'
+          if ! printf '%s\n' "$TAG" | grep -Eq "$SEMVER_RE"; then
+            echo "Invalid release tag: $TAG"
+            exit 1
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            git rev-parse --verify "refs/tags/${TAG}^{commit}" >/dev/null
+            if [ "$(git rev-parse HEAD)" != "$(git rev-parse "refs/tags/${TAG}^{commit}")" ]; then
+              echo "Checked-out commit does not match $TAG"
+              exit 1
+            fi
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "manual=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release commit belongs to main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main; then
+            echo "Release tag ${{ steps.release.outputs.tag }} is not on main"
+            exit 1
+          fi
 
       - name: Set up Go environment
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -45,24 +98,18 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Validate release tag
-        run: |
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid release tag: ${GITHUB_REF_NAME}"
-            exit 1
-          fi
-
       - name: Run tests
         run: go test -count=1 -v -race ./...
 
       - name: Extract version information
         id: version
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          COMMIT=${GITHUB_SHA}
+          TAG="${{ steps.release.outputs.tag }}"
+          VERSION=${TAG#v}
+          COMMIT=$(git rev-parse HEAD)
           BUILD_DATE=$(git show -s --format=%cI HEAD)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
           echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
 
@@ -115,11 +162,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=raw,value=${{ steps.release.outputs.tag }}
+            type=semver,pattern={{version}},value=${{ steps.release.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.release.outputs.tag }},enable=${{ !contains(steps.release.outputs.tag, '-') && (github.event_name != 'workflow_dispatch' || inputs.update_aliases) }}
+            type=semver,pattern={{major}},value=${{ steps.release.outputs.tag }},enable=${{ !contains(steps.release.outputs.tag, '-') && (github.event_name != 'workflow_dispatch' || inputs.update_aliases) }}
+            type=raw,value=latest,enable=${{ !contains(steps.release.outputs.tag, '-') && (github.event_name != 'workflow_dispatch' || inputs.update_aliases) }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -139,11 +186,21 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      - name: Delete existing release for rebuild
+        if: steps.release.outputs.manual == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          # Keep the immutable Git tag; only replace the release and its assets.
+          gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY" || true
+
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             dist/*
+          tag_name: ${{ steps.release.outputs.tag }}
           name: Release ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           body: |
@@ -165,4 +222,4 @@ jobs:
             ### Checksums
             See `checksums.txt` for SHA256 checksums.
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(steps.release.outputs.tag, '-') }}
