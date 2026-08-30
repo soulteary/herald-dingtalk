@@ -93,6 +93,38 @@ func TestStoreDoesNotCacheFailure(t *testing.T) {
 	if calls != 2 {
 		t.Fatalf("calls = %d, want 2", calls)
 	}
+	executed := false
+	_, _, err := store.Do(context.Background(), "key", "different", func() Result {
+		executed = true
+		return successResult("unexpected")
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("conflicting retry error = %v, want ErrConflict", err)
+	}
+	if executed {
+		t.Fatal("conflicting retry executed")
+	}
+}
+
+func TestStoreReordersRetriedFailureAfterRefreshingExpiry(t *testing.T) {
+	now := time.Unix(100, 0)
+	store := newStore(10, 10, func() time.Time { return now })
+
+	_, _, _ = store.Do(context.Background(), "first", "one", failureResult)
+	now = now.Add(time.Second)
+	_, _, _ = store.Do(context.Background(), "second", "two", failureResult)
+	now = now.Add(time.Second)
+	_, _, _ = store.Do(context.Background(), "first", "one", failureResult)
+
+	now = time.Unix(111, 0)
+	_, _, _ = store.Do(context.Background(), "third", "three", failureResult)
+
+	if _, ok := store.entries["second"]; ok {
+		t.Fatal("expired entry behind a refreshed binding was not pruned")
+	}
+	if _, ok := store.entries["first"]; !ok {
+		t.Fatal("refreshed binding expired too early")
+	}
 }
 
 func TestStoreRejectsFingerprintConflict(t *testing.T) {
