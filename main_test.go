@@ -190,7 +190,14 @@ func TestRunServesUntilShutdownSignal(t *testing.T) {
 	log := logger.New(logger.Config{Level: logger.Disabled, Output: io.Discard})
 	runDone := make(chan error, 1)
 	go func() { runDone <- run(log, quit) }()
-	listener := <-listenerReady
+	var listener net.Listener
+	select {
+	case listener = <-listenerReady:
+	case err := <-runDone:
+		t.Fatalf("run returned before listener was ready: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("listener was not ready")
+	}
 
 	client := &http.Client{Timeout: time.Second}
 	deadline := time.After(time.Second)

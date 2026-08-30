@@ -409,8 +409,8 @@ func TestNewClientUsesSafeHTTPDefaults(t *testing.T) {
 	if client.http == nil {
 		t.Fatal("default HTTP client is nil")
 	}
-	if client.http.Timeout != defaultClientTimeout {
-		t.Fatalf("timeout = %s, want %s", client.http.Timeout, defaultClientTimeout)
+	if client.http.Timeout != 0 {
+		t.Fatalf("timeout = %s, want context-managed deadline", client.http.Timeout)
 	}
 	if client.http.CheckRedirect == nil {
 		t.Fatal("redirect policy is not configured")
@@ -507,6 +507,71 @@ func TestGetTokenWaiterHonorsCancellation(t *testing.T) {
 	_, err := client.getToken(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
+
+func TestGetTokenWaiterRetriesAfterLeaderCancellation(t *testing.T) {
+	leaderStarted := make(chan struct{})
+	var calls atomic.Int32
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if calls.Add(1) == 1 {
+			close(leaderStarted)
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"errcode":0,"access_token":"retry-token","expires_in":7200}`)),
+			Request:    req,
+		}, nil
+	})})
+
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	leaderDone := make(chan error, 1)
+	go func() {
+		_, err := client.getToken(leaderCtx)
+		leaderDone <- err
+	}()
+	<-leaderStarted
+
+	waiterDone := make(chan struct {
+		token string
+		err   error
+	}, 1)
+	go func() {
+		token, err := client.getToken(context.Background())
+		waiterDone <- struct {
+			token string
+			err   error
+		}{token, err}
+	}()
+
+	cancelLeader()
+	if err := <-leaderDone; !errors.Is(err, context.Canceled) {
+		t.Fatalf("leader error = %v, want context.Canceled", err)
+	}
+	waiter := <-waiterDone
+	if waiter.err != nil || waiter.token != "retry-token" {
+		t.Fatalf("waiter = %q, %v", waiter.token, waiter.err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("refresh calls = %d, want 2", got)
+	}
+}
+
+func TestTokenRefreshOnlyRetriesLeaderContextCancellation(t *testing.T) {
+	upstreamTimeout := &tokenRefresh{err: context.DeadlineExceeded}
+	if upstreamTimeout.leaderCanceled {
+		t.Fatal("upstream timeout must not be classified as leader cancellation")
+	}
+
+	leaderTimeout := &tokenRefresh{
+		err:            context.DeadlineExceeded,
+		leaderCanceled: true,
+	}
+	if !leaderTimeout.leaderCanceled {
+		t.Fatal("leader context deadline must allow a live waiter to retry")
 	}
 }
 

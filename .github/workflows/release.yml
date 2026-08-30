@@ -21,15 +21,18 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 concurrency:
-  # Releases update shared major/minor/latest aliases. Serialize every release
-  # so an older run cannot finish last and overwrite aliases from a newer tag.
-  group: ${{ github.repository }}-release
+  # Serialize rebuilds of the same immutable tag without using a repository-wide
+  # pending slot that can discard a different tag's queued release.
+  group: ${{ github.repository }}-release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      stable: ${{ steps.release.outputs.stable }}
     permissions:
       contents: write
       packages: write
@@ -71,6 +74,11 @@ jobs:
             fi
           fi
 
+          STABLE=false
+          if [[ "$TAG" != *-* ]]; then
+            STABLE=true
+          fi
+
           LATEST_TAG=""
           RELEASE_EXISTS=false
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
@@ -100,6 +108,7 @@ jobs:
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "manual=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
+          echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
           echo "exists=$RELEASE_EXISTS" >> "$GITHUB_OUTPUT"
           echo "make_latest=$MAKE_LATEST" >> "$GITHUB_OUTPUT"
 
@@ -195,9 +204,6 @@ jobs:
           tags: |
             type=raw,value=${{ steps.release.outputs.tag }}
             type=semver,pattern={{version}},value=${{ steps.release.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.release.outputs.tag }},enable=${{ !contains(steps.release.outputs.tag, '-') && (github.event_name != 'workflow_dispatch' || inputs.update_aliases) }}
-            type=semver,pattern={{major}},value=${{ steps.release.outputs.tag }},enable=${{ !contains(steps.release.outputs.tag, '-') && (github.event_name != 'workflow_dispatch' || inputs.update_aliases) }}
-            type=raw,value=latest,enable=${{ !contains(steps.release.outputs.tag, '-') && (github.event_name != 'workflow_dispatch' || inputs.update_aliases) }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -265,3 +271,91 @@ jobs:
           # existing release: preserve its generated and hand-edited notes.
           make_latest: ${{ steps.release.outputs.make_latest }}
           overwrite_files: true
+
+  publish-aliases:
+    name: Publish shared release aliases
+    needs: release
+    if: ${{ always() && needs.release.result == 'success' && needs.release.outputs.stable == 'true' && (github.event_name != 'workflow_dispatch' || inputs.update_aliases) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    # Only this convergent job mutates shared aliases. GitHub may replace an
+    # older pending job, so every surviving job reconciles all published stable
+    # release series instead of assuming its own tag is the only one to update.
+    concurrency:
+      group: ${{ github.repository }}-release-aliases
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout release tags
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconcile published stable aliases
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin main:refs/remotes/origin/main
+          STABLE_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          declare -A MAJOR_TAGS
+          declare -A MINOR_TAGS
+          LATEST_TAG=""
+
+          while IFS= read -r TAG; do
+            [ -n "${TAG}" ] || continue
+            if ! git merge-base --is-ancestor "${TAG}^{commit}" origin/main; then
+              echo "Skipping ${TAG}: release commit is not on main"
+              continue
+            fi
+            SOURCE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
+            if ! docker buildx imagetools inspect "${SOURCE}" >/dev/null 2>&1; then
+              echo "Skipping ${TAG}: immutable image is unavailable"
+              continue
+            fi
+
+            VERSION="${TAG#v}"
+            MAJOR="${VERSION%%.*}"
+            REST="${VERSION#*.}"
+            MINOR="${MAJOR}.${REST%%.*}"
+            if [ -z "${LATEST_TAG}" ]; then
+              LATEST_TAG="${TAG}"
+            fi
+            if [ -z "${MAJOR_TAGS[${MAJOR}]+x}" ]; then
+              MAJOR_TAGS["${MAJOR}"]="${TAG}"
+            fi
+            if [ -z "${MINOR_TAGS[${MINOR}]+x}" ]; then
+              MINOR_TAGS["${MINOR}"]="${TAG}"
+            fi
+          done < <(git tag --list 'v*' | grep -E "${STABLE_RE}" | sort -Vr || true)
+
+          if [ -z "${LATEST_TAG}" ]; then
+            echo "No eligible published stable image exists"
+            exit 1
+          fi
+
+          for MAJOR in "${!MAJOR_TAGS[@]}"; do
+            TAG="${MAJOR_TAGS[${MAJOR}]}"
+            docker buildx imagetools create \
+              --tag "${REGISTRY}/${IMAGE_NAME}:${MAJOR}" \
+              "${REGISTRY}/${IMAGE_NAME}:${TAG}"
+          done
+          for MINOR in "${!MINOR_TAGS[@]}"; do
+            TAG="${MINOR_TAGS[${MINOR}]}"
+            docker buildx imagetools create \
+              --tag "${REGISTRY}/${IMAGE_NAME}:${MINOR}" \
+              "${REGISTRY}/${IMAGE_NAME}:${TAG}"
+          done
+          docker buildx imagetools create \
+            --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
+            "${REGISTRY}/${IMAGE_NAME}:${LATEST_TAG}"

@@ -15,17 +15,16 @@ import (
 )
 
 const (
-	baseURL              = "https://oapi.dingtalk.com"
-	oauth2BaseURL        = "https://api.dingtalk.com"
-	getTokenURL          = baseURL + "/gettoken"
-	sendMsgURL           = baseURL + "/topapi/message/corpconversation/asyncsend_v2"
-	oauth2UserTokenURL   = oauth2BaseURL + "/v1.0/oauth2/userAccessToken"
-	oauth2UserMeURL      = oauth2BaseURL + "/v1.0/contact/users/me"
-	getByMobileURL       = baseURL + "/topapi/v2/user/getbymobile"
-	maxResponseBytes     = int64(1 << 20)
-	invalidTokenCode     = 40014
-	expiredTokenCode     = 42001
-	defaultClientTimeout = 15 * time.Second
+	baseURL            = "https://oapi.dingtalk.com"
+	oauth2BaseURL      = "https://api.dingtalk.com"
+	getTokenURL        = baseURL + "/gettoken"
+	sendMsgURL         = baseURL + "/topapi/message/corpconversation/asyncsend_v2"
+	oauth2UserTokenURL = oauth2BaseURL + "/v1.0/oauth2/userAccessToken"
+	oauth2UserMeURL    = oauth2BaseURL + "/v1.0/contact/users/me"
+	getByMobileURL     = baseURL + "/topapi/v2/user/getbymobile"
+	maxResponseBytes   = int64(1 << 20)
+	invalidTokenCode   = 40014
+	expiredTokenCode   = 42001
 )
 
 var ErrResponseTooLarge = errors.New("dingtalk response exceeds 1 MiB")
@@ -180,9 +179,10 @@ func (e *httpStatusError) Error() string {
 }
 
 type tokenRefresh struct {
-	done  chan struct{}
-	token string
-	err   error
+	done           chan struct{}
+	token          string
+	err            error
+	leaderCanceled bool
 }
 
 // Client calls DingTalk work notification API.
@@ -206,7 +206,8 @@ func NewClient(appKey, appSecret, agentID string) *Client {
 func NewClientWithHTTP(appKey, appSecret, agentID string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{
-			Timeout: defaultClientTimeout,
+			// Per-request contexts own the end-to-end deadline. A client-wide
+			// timeout would silently truncate supported 16-30 second requests.
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -219,38 +220,49 @@ func NewClientWithHTTP(appKey, appSecret, agentID string, httpClient *http.Clien
 
 // getToken returns a valid access token and coalesces concurrent refreshes.
 func (c *Client) getToken(ctx context.Context) (string, error) {
-	c.mu.Lock()
-	if c.token != "" && time.Now().Before(c.expires) {
-		token := c.token
-		c.mu.Unlock()
-		return token, nil
-	}
-	if c.refresh != nil {
-		active := c.refresh
-		c.mu.Unlock()
-		select {
-		case <-active.done:
-			return active.token, active.err
-		case <-ctx.Done():
-			return "", ctx.Err()
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", err
 		}
-	}
-	active := &tokenRefresh{done: make(chan struct{})}
-	c.refresh = active
-	c.mu.Unlock()
+		c.mu.Lock()
+		if c.token != "" && time.Now().Before(c.expires) {
+			token := c.token
+			c.mu.Unlock()
+			return token, nil
+		}
+		if c.refresh != nil {
+			active := c.refresh
+			c.mu.Unlock()
+			select {
+			case <-active.done:
+				// A shared refresh is owned by its leader's context. If only that
+				// leader was canceled, a live waiter must be allowed to retry.
+				if active.leaderCanceled && ctx.Err() == nil {
+					continue
+				}
+				return active.token, active.err
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+		active := &tokenRefresh{done: make(chan struct{})}
+		c.refresh = active
+		c.mu.Unlock()
 
-	token, expires, err := c.fetchToken(ctx)
-	c.mu.Lock()
-	if err == nil {
-		c.token = token
-		c.expires = expires
+		token, expires, err := c.fetchToken(ctx)
+		c.mu.Lock()
+		if err == nil {
+			c.token = token
+			c.expires = expires
+		}
+		active.token = token
+		active.err = err
+		active.leaderCanceled = ctx.Err() != nil
+		c.refresh = nil
+		close(active.done)
+		c.mu.Unlock()
+		return token, err
 	}
-	active.token = token
-	active.err = err
-	c.refresh = nil
-	close(active.done)
-	c.mu.Unlock()
-	return token, err
 }
 
 func (c *Client) fetchToken(ctx context.Context) (string, time.Time, error) {

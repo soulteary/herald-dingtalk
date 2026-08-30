@@ -37,6 +37,7 @@ type Result struct {
 type entry struct {
 	fingerprint string
 	result      Result
+	hasResult   bool
 	expiresAt   time.Time
 	order       *list.Element
 }
@@ -88,7 +89,8 @@ func newStore(ttlSec, maxEntries int, now func() time.Time) *Store {
 
 // Do returns a cached result, joins an identical in-flight request, or executes
 // fn as the leader. Reusing a key with a different fingerprint returns
-// ErrConflict. Only successful responses are retained after fn completes.
+// ErrConflict. Every completed attempt retains its fingerprint binding for the
+// TTL, while only successful responses are replayed from the cache.
 func (s *Store) Do(ctx context.Context, key, fingerprint string, fn func() Result) (Result, Outcome, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, "", err
@@ -105,9 +107,13 @@ func (s *Store) Do(ctx context.Context, key, fingerprint string, fn func() Resul
 			s.mu.Unlock()
 			return Result{}, "", ErrConflict
 		}
-		result := cached.result
-		s.mu.Unlock()
-		return result, OutcomeCached, nil
+		if cached.hasResult {
+			result := cached.result
+			s.mu.Unlock()
+			return result, OutcomeCached, nil
+		}
+		// A previous attempt failed. Keep the key bound to the same logical
+		// request, but allow that request to execute again.
 	}
 	if active, ok := s.inFlight[key]; ok {
 		if active.fingerprint != fingerprint {
@@ -161,14 +167,24 @@ func (s *Store) finish(key string, active *call, result Result, cache bool, err 
 	active.result = result
 	active.err = err
 	delete(s.inFlight, key)
-	if cache {
-		s.evictForInsertLocked()
-		order := s.order.PushBack(key)
-		s.entries[key] = entry{
-			fingerprint: active.fingerprint,
-			result:      result,
-			expiresAt:   s.now().Add(s.ttl),
-			order:       order,
+	if err == nil {
+		expiresAt := s.now().Add(s.ttl)
+		if existing, ok := s.entries[key]; ok {
+			existing.result = result
+			existing.hasResult = cache
+			existing.expiresAt = expiresAt
+			s.order.MoveToBack(existing.order)
+			s.entries[key] = existing
+		} else {
+			s.evictForInsertLocked()
+			order := s.order.PushBack(key)
+			s.entries[key] = entry{
+				fingerprint: active.fingerprint,
+				result:      result,
+				hasResult:   cache,
+				expiresAt:   expiresAt,
+				order:       order,
+			}
 		}
 	}
 	close(active.done)
