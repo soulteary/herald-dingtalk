@@ -15,16 +15,16 @@ import (
 )
 
 const (
-	baseURL              = "https://oapi.dingtalk.com"
-	oauth2BaseURL        = "https://api.dingtalk.com"
-	getTokenURL          = baseURL + "/gettoken"
-	sendMsgURL           = baseURL + "/topapi/message/corpconversation/asyncsend_v2"
-	oauth2UserTokenURL   = oauth2BaseURL + "/v1.0/oauth2/userAccessToken"
-	oauth2UserMeURL      = oauth2BaseURL + "/v1.0/contact/users/me"
-	getByMobileURL       = baseURL + "/topapi/v2/user/getbymobile"
-	maxResponseBytes     = int64(1 << 20)
-	invalidTokenCode     = 40014
-	expiredTokenCode     = 42001
+	baseURL            = "https://oapi.dingtalk.com"
+	oauth2BaseURL      = "https://api.dingtalk.com"
+	getTokenURL        = baseURL + "/gettoken"
+	sendMsgURL         = baseURL + "/topapi/message/corpconversation/asyncsend_v2"
+	oauth2UserTokenURL = oauth2BaseURL + "/v1.0/oauth2/userAccessToken"
+	oauth2UserMeURL    = oauth2BaseURL + "/v1.0/contact/users/me"
+	getByMobileURL     = baseURL + "/topapi/v2/user/getbymobile"
+	maxResponseBytes   = int64(1 << 20)
+	invalidTokenCode   = 40014
+	expiredTokenCode   = 42001
 )
 
 var ErrResponseTooLarge = errors.New("dingtalk response exceeds 1 MiB")
