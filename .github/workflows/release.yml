@@ -312,9 +312,13 @@ jobs:
             fi
             RELEASE_ID="${RELEASE_STATE}"
             SOURCE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
-            if ! docker buildx imagetools inspect "${SOURCE}" >/dev/null 2>&1; then
-              echo "Skipping ${TAG}: immutable image is unavailable"
-              continue
+            if ! INSPECT_ERROR="$(docker buildx imagetools inspect "${SOURCE}" 2>&1 >/dev/null)"; then
+              if printf '%s\n' "${INSPECT_ERROR}" | grep -Eqi 'manifest unknown|name unknown|not found'; then
+                echo "Skipping ${TAG}: immutable image is unavailable"
+                continue
+              fi
+              echo "Failed to inspect ${SOURCE}: ${INSPECT_ERROR}" >&2
+              exit 1
             fi
 
             VERSION="${TAG#v}"
