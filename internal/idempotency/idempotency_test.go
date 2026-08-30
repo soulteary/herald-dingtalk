@@ -93,6 +93,17 @@ func TestStoreDoesNotCacheFailure(t *testing.T) {
 	if calls != 2 {
 		t.Fatalf("calls = %d, want 2", calls)
 	}
+	executed := false
+	_, _, err := store.Do(context.Background(), "key", "different", func() Result {
+		executed = true
+		return successResult("unexpected")
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("conflicting retry error = %v, want ErrConflict", err)
+	}
+	if executed {
+		t.Fatal("conflicting retry executed")
+	}
 }
 
 func TestStoreRejectsFingerprintConflict(t *testing.T) {
