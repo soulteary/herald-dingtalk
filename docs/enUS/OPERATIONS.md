@@ -168,6 +168,6 @@ Keep the returned `X-Request-ID` and `message_id` with the rollout record. Searc
 | `429 rate_limited` | This process reached its concurrency limit, or DingTalk rate-limited the operation | Honor `Retry-After` when present, retry with the same idempotency key, and inspect local capacity and DingTalk quota. |
 | `502 send_failed` / `resolve_failed` | A DingTalk upstream API failed | Correlate by request ID, then check DingTalk status, permissions, and quota. Credential rejection is reported separately as `503 provider_down`. |
 | `503 provider_down` | Local DingTalk configuration is invalid | Check `/readyz` and startup logs, then fix configuration and restart. |
-| `504 timeout` | Request or DingTalk operation exceeded its deadline | Retry with the same idempotency key; inspect upstream latency before increasing the timeout. |
+| `504 timeout` | Request or DingTalk operation exceeded its deadline; DingTalk may already have accepted the send | Treat delivery as indeterminate. Reusing the same key does not guarantee deduplication after a completed timeout; retry only when duplicates are acceptable or an external deduplication/reconciliation mechanism exists. |
 
 For symptom-based diagnosis, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md). For credential handling and trust boundaries, see [SECURITY.md](SECURITY.md).
