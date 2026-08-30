@@ -45,6 +45,7 @@ jobs:
         id: release
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
@@ -69,8 +70,15 @@ jobs:
             fi
           fi
 
+          LATEST_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          MAKE_LATEST=false
+          if [[ "${TAG}" != *-* ]] && { [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ] || [ "${TAG}" = "${LATEST_TAG}" ]; }; then
+            MAKE_LATEST=true
+          fi
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "manual=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
+          echo "make_latest=$MAKE_LATEST" >> "$GITHUB_OUTPUT"
 
       - name: Verify release commit belongs to main
         run: |
@@ -214,7 +222,7 @@ jobs:
             See `checksums.txt` for SHA256 checksums.
           draft: false
           prerelease: ${{ contains(steps.release.outputs.tag, '-') }}
-          # A manual rebuild may target an older version. Never let it move the
-          # repository's Latest marker backwards.
-          make_latest: ${{ steps.release.outputs.manual == 'false' && !contains(steps.release.outputs.tag, '-') }}
+          # Preserve Latest when manually rebuilding the release that already
+          # owns it, while preventing an older rebuild from moving it backwards.
+          make_latest: ${{ steps.release.outputs.make_latest }}
           overwrite_files: true
