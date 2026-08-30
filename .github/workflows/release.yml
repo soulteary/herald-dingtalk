@@ -70,7 +70,15 @@ jobs:
             fi
           fi
 
-          LATEST_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          LATEST_TAG=""
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
+            LATEST_TAG="$(gh api graphql \
+              -f query='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { latestRelease { tagName } } }' \
+              -F owner="${GITHUB_REPOSITORY_OWNER}" \
+              -F name="${REPOSITORY_NAME}" \
+              --jq '.data.repository.latestRelease.tagName // ""')"
+          fi
           MAKE_LATEST=false
           if [[ "${TAG}" != *-* ]] && { [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ] || [ "${TAG}" = "${LATEST_TAG}" ]; }; then
             MAKE_LATEST=true
