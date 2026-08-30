@@ -180,9 +180,10 @@ func (e *httpStatusError) Error() string {
 }
 
 type tokenRefresh struct {
-	done  chan struct{}
-	token string
-	err   error
+	done           chan struct{}
+	token          string
+	err            error
+	leaderCanceled bool
 }
 
 // Client calls DingTalk work notification API.
@@ -236,7 +237,7 @@ func (c *Client) getToken(ctx context.Context) (string, error) {
 			case <-active.done:
 				// A shared refresh is owned by its leader's context. If only that
 				// leader was canceled, a live waiter must be allowed to retry.
-				if (errors.Is(active.err, context.Canceled) || errors.Is(active.err, context.DeadlineExceeded)) && ctx.Err() == nil {
+				if active.leaderCanceled && ctx.Err() == nil {
 					continue
 				}
 				return active.token, active.err
@@ -256,6 +257,7 @@ func (c *Client) getToken(ctx context.Context) (string, error) {
 		}
 		active.token = token
 		active.err = err
+		active.leaderCanceled = ctx.Err() != nil
 		c.refresh = nil
 		close(active.done)
 		c.mu.Unlock()
