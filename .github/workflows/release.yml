@@ -186,15 +186,6 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - name: Delete existing release for rebuild
-        if: steps.release.outputs.manual == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          # Keep the immutable Git tag; only replace the release and its assets.
-          gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY" || true
-
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
@@ -223,3 +214,7 @@ jobs:
             See `checksums.txt` for SHA256 checksums.
           draft: false
           prerelease: ${{ contains(steps.release.outputs.tag, '-') }}
+          # A manual rebuild may target an older version. Never let it move the
+          # repository's Latest marker backwards.
+          make_latest: ${{ steps.release.outputs.manual == 'false' && !contains(steps.release.outputs.tag, '-') }}
+          overwrite_files: true
