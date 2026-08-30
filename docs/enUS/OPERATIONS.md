@@ -33,6 +33,10 @@ metadata:
   name: herald-dingtalk
 spec:
   replicas: 1
+  # Idempotency is process-local. Recreate prevents a rollout from briefly
+  # running two pods and bypassing single-process duplicate suppression.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: herald-dingtalk

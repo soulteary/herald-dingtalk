@@ -33,6 +33,10 @@ metadata:
   name: herald-dingtalk
 spec:
   replicas: 1
+  # 幂等状态仅位于单个进程。Recreate 可避免滚动更新短暂运行两个 Pod，
+  # 从而绕过单进程重复抑制。
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: herald-dingtalk
