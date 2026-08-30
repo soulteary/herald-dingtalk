@@ -78,16 +78,13 @@ jobs:
             STABLE=true
           fi
 
-          RELEASE_EXISTS=false
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
-            RELEASE_EXISTS="$(gh api graphql \
-              -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { release(tagName: $tag) { id } } }' \
-              -F owner="${GITHUB_REPOSITORY_OWNER}" \
-              -F name="${REPOSITORY_NAME}" \
-              -F tag="${TAG}" \
-              --jq '.data.repository.release != null')"
-          fi
+          REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
+          RELEASE_EXISTS="$(gh api graphql \
+            -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { release(tagName: $tag) { id } } }' \
+            -F owner="${GITHUB_REPOSITORY_OWNER}" \
+            -F name="${REPOSITORY_NAME}" \
+            -F tag="${TAG}" \
+            --jq '.data.repository.release != null')"
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "manual=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
@@ -294,11 +291,20 @@ jobs:
           declare -A MAJOR_TAGS
           declare -A MINOR_TAGS
           LATEST_TAG=""
+          LATEST_RELEASE_ID=""
 
           while IFS= read -r TAG; do
             [ -n "${TAG}" ] || continue
             if ! git merge-base --is-ancestor "${TAG}^{commit}" origin/main; then
               echo "Skipping ${TAG}: release commit is not on main"
+              continue
+            fi
+            RELEASE_ID="$(gh release view "${TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json databaseId,isDraft \
+              --jq 'select(.isDraft == false) | .databaseId' 2>/dev/null || true)"
+            if [ -z "${RELEASE_ID}" ]; then
+              echo "Skipping ${TAG}: published release is unavailable"
               continue
             fi
             SOURCE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
@@ -313,6 +319,7 @@ jobs:
             MINOR="${MAJOR}.${REST%%.*}"
             if [ -z "${LATEST_TAG}" ]; then
               LATEST_TAG="${TAG}"
+              LATEST_RELEASE_ID="${RELEASE_ID}"
             fi
             if [ -z "${MAJOR_TAGS[${MAJOR}]+x}" ]; then
               MAJOR_TAGS["${MAJOR}"]="${TAG}"
@@ -343,10 +350,6 @@ jobs:
             --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
             "${REGISTRY}/${IMAGE_NAME}:${LATEST_TAG}"
 
-          RELEASE_ID="$(gh release view "${LATEST_TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --json databaseId \
-            --jq '.databaseId')"
           gh api --method PATCH \
-            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            "repos/${GITHUB_REPOSITORY}/releases/${LATEST_RELEASE_ID}" \
             -f make_latest=true >/dev/null
