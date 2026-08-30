@@ -292,6 +292,7 @@ jobs:
           declare -A MINOR_TAGS
           LATEST_TAG=""
           LATEST_RELEASE_ID=""
+          REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
 
           while IFS= read -r TAG; do
             [ -n "${TAG}" ] || continue
@@ -299,14 +300,17 @@ jobs:
               echo "Skipping ${TAG}: release commit is not on main"
               continue
             fi
-            RELEASE_ID="$(gh release view "${TAG}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --json databaseId,isDraft \
-              --jq 'select(.isDraft == false) | .databaseId' 2>/dev/null || true)"
-            if [ -z "${RELEASE_ID}" ]; then
-              echo "Skipping ${TAG}: published release is unavailable"
+            RELEASE_STATE="$(gh api graphql \
+              -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { release(tagName: $tag) { databaseId isDraft } } }' \
+              -F owner="${GITHUB_REPOSITORY_OWNER}" \
+              -F name="${REPOSITORY_NAME}" \
+              -F tag="${TAG}" \
+              --jq 'if .data.repository.release == null then "missing" elif .data.repository.release.isDraft then "draft" else (.data.repository.release.databaseId | tostring) end')"
+            if [ "${RELEASE_STATE}" = "missing" ] || [ "${RELEASE_STATE}" = "draft" ]; then
+              echo "Skipping ${TAG}: release is ${RELEASE_STATE}"
               continue
             fi
+            RELEASE_ID="${RELEASE_STATE}"
             SOURCE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
             if ! docker buildx imagetools inspect "${SOURCE}" >/dev/null 2>&1; then
               echo "Skipping ${TAG}: immutable image is unavailable"
