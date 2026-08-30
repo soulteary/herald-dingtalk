@@ -510,7 +510,6 @@ func TestGetTokenWaiterHonorsCancellation(t *testing.T) {
 	}
 }
 
-
 func TestGetTokenWaiterRetriesAfterLeaderCancellation(t *testing.T) {
 	leaderStarted := make(chan struct{})
 	var calls atomic.Int32
