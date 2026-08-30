@@ -22,6 +22,7 @@ RUN apk add --no-cache ca-certificates curl && \
 COPY --from=builder /app/herald-dingtalk /bin/herald-dingtalk
 EXPOSE 8083
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8083/healthz || exit 1
+    CMD port="${PORT:-8083}"; port="${port#:}"; \
+        curl -fsS "http://127.0.0.1:${port}/healthz" || exit 1
 USER herald:herald
 CMD ["herald-dingtalk"]
