@@ -409,8 +409,8 @@ func TestNewClientUsesSafeHTTPDefaults(t *testing.T) {
 	if client.http == nil {
 		t.Fatal("default HTTP client is nil")
 	}
-	if client.http.Timeout != defaultClientTimeout {
-		t.Fatalf("timeout = %s, want %s", client.http.Timeout, defaultClientTimeout)
+	if client.http.Timeout != 0 {
+		t.Fatalf("timeout = %s, want context-managed deadline", client.http.Timeout)
 	}
 	if client.http.CheckRedirect == nil {
 		t.Fatal("redirect policy is not configured")
