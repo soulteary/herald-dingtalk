@@ -25,7 +25,6 @@ const (
 	maxResponseBytes     = int64(1 << 20)
 	invalidTokenCode     = 40014
 	expiredTokenCode     = 42001
-	defaultClientTimeout = 15 * time.Second
 )
 
 var ErrResponseTooLarge = errors.New("dingtalk response exceeds 1 MiB")
@@ -206,7 +205,8 @@ func NewClient(appKey, appSecret, agentID string) *Client {
 func NewClientWithHTTP(appKey, appSecret, agentID string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{
-			Timeout: defaultClientTimeout,
+			// Per-request contexts own the end-to-end deadline. A client-wide
+			// timeout would silently truncate supported 16-30 second requests.
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
