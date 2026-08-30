@@ -173,6 +173,7 @@ func (s *Store) finish(key string, active *call, result Result, cache bool, err 
 			existing.result = result
 			existing.hasResult = cache
 			existing.expiresAt = expiresAt
+			s.order.MoveToBack(existing.order)
 			s.entries[key] = existing
 		} else {
 			s.evictForInsertLocked()
