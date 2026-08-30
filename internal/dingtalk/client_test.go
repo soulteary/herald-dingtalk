@@ -560,6 +560,21 @@ func TestGetTokenWaiterRetriesAfterLeaderCancellation(t *testing.T) {
 	}
 }
 
+func TestTokenRefreshOnlyRetriesLeaderContextCancellation(t *testing.T) {
+	upstreamTimeout := &tokenRefresh{err: context.DeadlineExceeded}
+	if upstreamTimeout.leaderCanceled {
+		t.Fatal("upstream timeout must not be classified as leader cancellation")
+	}
+
+	leaderTimeout := &tokenRefresh{
+		err:            context.DeadlineExceeded,
+		leaderCanceled: true,
+	}
+	if !leaderTimeout.leaderCanceled {
+		t.Fatal("leader context deadline must allow a live waiter to retry")
+	}
+}
+
 func TestClientDoPropagatesTransportAndReadErrors(t *testing.T) {
 	transportErr := errors.New("transport failed")
 	client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
