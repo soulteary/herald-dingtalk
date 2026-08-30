@@ -172,6 +172,6 @@ curl -i "$BASE_URL/v1/send" \
 | `429 rate_limited` | 当前进程达到并发上限，或钉钉对操作实施限流 | 存在 `Retry-After` 时遵守等待时间，使用相同幂等键重试，并检查本地容量与钉钉配额。 |
 | `502 send_failed` / `resolve_failed` | 钉钉上游 API 调用失败 | 用请求 ID 关联日志，再检查钉钉状态、权限和配额；凭证被拒绝会单独返回 `503 provider_down`。 |
 | `503 provider_down` | 本地钉钉配置无效 | 检查 `/readyz` 和启动日志，修正配置后重启。 |
-| `504 timeout` | 请求或钉钉操作超过截止时间 | 使用相同幂等键重试；提高超时前先检查上游延迟。 |
+| `504 timeout` | 请求或钉钉操作超过截止时间；钉钉可能已经接收发送请求 | 将交付状态视为不确定。操作已超时结束后，复用相同幂等键不能保证去重；仅在允许重复发送或具备外部去重/核对机制时重试。 |
 
 按现象排查见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)，凭证处理和信任边界见 [SECURITY.md](SECURITY.md)。

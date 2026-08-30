@@ -140,7 +140,7 @@ The DingTalk OAuth2 auth code could not be exchanged for userid. Common causes: 
 ### Solutions
 
 1. Honor `Retry-After` when it is present. The local concurrency limiter currently returns `Retry-After: 1`.
-2. Retry the same logical send with the same idempotency key so an operation that completed after the caller timed out is not sent twice.
+2. Treat delivery after a `504 timeout` as indeterminate: DingTalk may have accepted the message, while failed results are not cached. Reusing the same idempotency key does not prevent a second send after the timed-out operation has completed. Retry only when duplicates are acceptable or an external reconciliation/deduplication mechanism is available.
 3. Investigate sustained 429 responses by checking `MAX_CONCURRENT_REQUESTS`, provider latency, DingTalk quota, and replica count.
 4. Investigate timeouts before raising caller deadlines; the accepted `timeout_seconds` range is 0–30 and 0 uses the 25-second server default.
 
