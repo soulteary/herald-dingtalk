@@ -48,7 +48,6 @@ jobs:
         id: release
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
-          INPUT_UPDATE_ALIASES: ${{ inputs.update_aliases }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -79,38 +78,21 @@ jobs:
             STABLE=true
           fi
 
-          LATEST_TAG=""
           RELEASE_EXISTS=false
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
-            RELEASE_STATE="$(gh api graphql \
-              -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { latestRelease { tagName } release(tagName: $tag) { id } } }' \
+            RELEASE_EXISTS="$(gh api graphql \
+              -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { release(tagName: $tag) { id } } }' \
               -F owner="${GITHUB_REPOSITORY_OWNER}" \
               -F name="${REPOSITORY_NAME}" \
               -F tag="${TAG}" \
-              --jq '[.data.repository.latestRelease.tagName // "__NO_LATEST__", (.data.repository.release != null)] | @tsv')"
-            IFS=$'\t' read -r LATEST_TAG RELEASE_EXISTS <<< "${RELEASE_STATE}"
-            if [ "${LATEST_TAG}" = "__NO_LATEST__" ]; then
-              LATEST_TAG=""
-            fi
-          fi
-
-          MAKE_LATEST=false
-          if [[ "${TAG}" != *-* ]]; then
-            if [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ] || [ "${TAG}" = "${LATEST_TAG}" ]; then
-              MAKE_LATEST=true
-            elif [ "${RELEASE_EXISTS}" != "true" ] && [ "${INPUT_UPDATE_ALIASES}" = "true" ]; then
-              if [ -z "${LATEST_TAG}" ] || [ "$(printf '%s\n%s\n' "${LATEST_TAG}" "${TAG}" | LC_ALL=C sort -V | tail -n 1)" = "${TAG}" ]; then
-                MAKE_LATEST=true
-              fi
-            fi
+              --jq '.data.repository.release != null')"
           fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "manual=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
           echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
           echo "exists=$RELEASE_EXISTS" >> "$GITHUB_OUTPUT"
-          echo "make_latest=$MAKE_LATEST" >> "$GITHUB_OUTPUT"
 
       - name: Verify release commit belongs to main
         run: |
@@ -252,9 +234,9 @@ jobs:
             See `checksums.txt` for SHA256 checksums.
           draft: false
           prerelease: ${{ contains(steps.release.outputs.tag, '-') }}
-          # Preserve Latest when manually rebuilding the release that already
-          # owns it, while preventing an older rebuild from moving it backwards.
-          make_latest: ${{ steps.release.outputs.make_latest }}
+          # The serialized alias job promotes the newest eligible stable
+          # release after reconciling all published tags.
+          make_latest: false
           overwrite_files: true
 
       - name: Update existing Release assets
@@ -267,9 +249,8 @@ jobs:
           name: Release ${{ steps.version.outputs.tag }}
           draft: false
           prerelease: ${{ contains(steps.release.outputs.tag, '-') }}
-          # Do not pass body or generate_release_notes when rebuilding an
-          # existing release: preserve its generated and hand-edited notes.
-          make_latest: ${{ steps.release.outputs.make_latest }}
+          # Do not pass body, generate_release_notes, or make_latest when
+          # rebuilding: preserve notes and never move Latest from stale state.
           overwrite_files: true
 
   publish-aliases:
@@ -278,7 +259,7 @@ jobs:
     if: ${{ always() && needs.release.result == 'success' && needs.release.outputs.stable == 'true' && (github.event_name != 'workflow_dispatch' || inputs.update_aliases) }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     # Only this convergent job mutates shared aliases. GitHub may replace an
     # older pending job, so every surviving job reconciles all published stable
@@ -304,6 +285,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Reconcile published stable aliases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git fetch --force --tags origin main:refs/remotes/origin/main
@@ -359,3 +342,11 @@ jobs:
           docker buildx imagetools create \
             --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
             "${REGISTRY}/${IMAGE_NAME}:${LATEST_TAG}"
+
+          RELEASE_ID="$(gh release view "${LATEST_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json databaseId \
+            --jq '.databaseId')"
+          gh api --method PATCH \
+            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -f make_latest=true >/dev/null
