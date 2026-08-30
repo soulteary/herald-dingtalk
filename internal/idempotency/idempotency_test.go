@@ -106,6 +106,27 @@ func TestStoreDoesNotCacheFailure(t *testing.T) {
 	}
 }
 
+func TestStoreReordersRetriedFailureAfterRefreshingExpiry(t *testing.T) {
+	now := time.Unix(100, 0)
+	store := newStore(10, 10, func() time.Time { return now })
+
+	_, _, _ = store.Do(context.Background(), "first", "one", failureResult)
+	now = now.Add(time.Second)
+	_, _, _ = store.Do(context.Background(), "second", "two", failureResult)
+	now = now.Add(time.Second)
+	_, _, _ = store.Do(context.Background(), "first", "one", failureResult)
+
+	now = time.Unix(111, 0)
+	_, _, _ = store.Do(context.Background(), "third", "three", failureResult)
+
+	if _, ok := store.entries["second"]; ok {
+		t.Fatal("expired entry behind a refreshed binding was not pruned")
+	}
+	if _, ok := store.entries["first"]; !ok {
+		t.Fatal("refreshed binding expired too early")
+	}
+}
+
 func TestStoreRejectsFingerprintConflict(t *testing.T) {
 	store := NewStore(300)
 	_, _, err := store.Do(context.Background(), "key", "first", func() Result {
