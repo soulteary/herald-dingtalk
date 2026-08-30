@@ -45,6 +45,7 @@ jobs:
         id: release
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_UPDATE_ALIASES: ${{ inputs.update_aliases }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -71,21 +72,35 @@ jobs:
           fi
 
           LATEST_TAG=""
+          RELEASE_EXISTS=false
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
-            LATEST_TAG="$(gh api graphql \
-              -f query='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { latestRelease { tagName } } }' \
+            RELEASE_STATE="$(gh api graphql \
+              -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { latestRelease { tagName } release(tagName: $tag) { id } } }' \
               -F owner="${GITHUB_REPOSITORY_OWNER}" \
               -F name="${REPOSITORY_NAME}" \
-              --jq '.data.repository.latestRelease.tagName // ""')"
+              -F tag="${TAG}" \
+              --jq '[.data.repository.latestRelease.tagName // "__NO_LATEST__", (.data.repository.release != null)] | @tsv')"
+            IFS=$'\t' read -r LATEST_TAG RELEASE_EXISTS <<< "${RELEASE_STATE}"
+            if [ "${LATEST_TAG}" = "__NO_LATEST__" ]; then
+              LATEST_TAG=""
+            fi
           fi
+
           MAKE_LATEST=false
-          if [[ "${TAG}" != *-* ]] && { [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ] || [ "${TAG}" = "${LATEST_TAG}" ]; }; then
-            MAKE_LATEST=true
+          if [[ "${TAG}" != *-* ]]; then
+            if [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ] || [ "${TAG}" = "${LATEST_TAG}" ]; then
+              MAKE_LATEST=true
+            elif [ "${RELEASE_EXISTS}" != "true" ] && [ "${INPUT_UPDATE_ALIASES}" = "true" ]; then
+              if [ -z "${LATEST_TAG}" ] || [ "$(printf '%s\n%s\n' "${LATEST_TAG}" "${TAG}" | LC_ALL=C sort -V | tail -n 1)" = "${TAG}" ]; then
+                MAKE_LATEST=true
+              fi
+            fi
           fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "manual=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
+          echo "exists=$RELEASE_EXISTS" >> "$GITHUB_OUTPUT"
           echo "make_latest=$MAKE_LATEST" >> "$GITHUB_OUTPUT"
 
       - name: Verify release commit belongs to main
@@ -203,6 +218,7 @@ jobs:
           sbom: true
 
       - name: Create Release
+        if: steps.release.outputs.exists != 'true'
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
@@ -232,5 +248,20 @@ jobs:
           prerelease: ${{ contains(steps.release.outputs.tag, '-') }}
           # Preserve Latest when manually rebuilding the release that already
           # owns it, while preventing an older rebuild from moving it backwards.
+          make_latest: ${{ steps.release.outputs.make_latest }}
+          overwrite_files: true
+
+      - name: Update existing Release assets
+        if: steps.release.outputs.exists == 'true'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: |
+            dist/*
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: ${{ contains(steps.release.outputs.tag, '-') }}
+          # Do not pass body or generate_release_notes when rebuilding an
+          # existing release: preserve its generated and hand-edited notes.
           make_latest: ${{ steps.release.outputs.make_latest }}
           overwrite_files: true
