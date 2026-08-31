@@ -301,12 +301,12 @@ jobs:
               continue
             fi
             RELEASE_STATE="$(gh api graphql \
-              -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { release(tagName: $tag) { databaseId isDraft } } }' \
+              -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { release(tagName: $tag) { databaseId isDraft isPrerelease } } }' \
               -F owner="${GITHUB_REPOSITORY_OWNER}" \
               -F name="${REPOSITORY_NAME}" \
               -F tag="${TAG}" \
-              --jq 'if .data.repository.release == null then "missing" elif .data.repository.release.isDraft then "draft" else (.data.repository.release.databaseId | tostring) end')"
-            if [ "${RELEASE_STATE}" = "missing" ] || [ "${RELEASE_STATE}" = "draft" ]; then
+              --jq 'if .data.repository.release == null then "missing" elif .data.repository.release.isDraft then "draft" elif .data.repository.release.isPrerelease then "prerelease" else (.data.repository.release.databaseId | tostring) end')"
+            if [ "${RELEASE_STATE}" = "missing" ] || [ "${RELEASE_STATE}" = "draft" ] || [ "${RELEASE_STATE}" = "prerelease" ]; then
               echo "Skipping ${TAG}: release is ${RELEASE_STATE}"
               continue
             fi
