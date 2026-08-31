@@ -48,6 +48,7 @@ jobs:
         id: release
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
@@ -76,9 +77,19 @@ jobs:
           if [[ "$TAG" != *-* ]]; then
             STABLE=true
           fi
+
+          REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
+          RELEASE_EXISTS="$(gh api graphql \
+            -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { release(tagName: $tag) { id } } }' \
+            -F owner="${GITHUB_REPOSITORY_OWNER}" \
+            -F name="${REPOSITORY_NAME}" \
+            -F tag="${TAG}" \
+            --jq '.data.repository.release != null')"
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "manual=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
           echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
+          echo "exists=$RELEASE_EXISTS" >> "$GITHUB_OUTPUT"
 
       - name: Verify release commit belongs to main
         run: |
@@ -191,16 +202,8 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - name: Delete existing release for rebuild
-        if: steps.release.outputs.manual == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          # Keep the immutable Git tag; only replace the release and its assets.
-          gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY" || true
-
       - name: Create Release
+        if: steps.release.outputs.exists != 'true'
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
@@ -228,6 +231,24 @@ jobs:
             See `checksums.txt` for SHA256 checksums.
           draft: false
           prerelease: ${{ contains(steps.release.outputs.tag, '-') }}
+          # The serialized alias job promotes the newest eligible stable
+          # release after reconciling all published tags.
+          make_latest: false
+          overwrite_files: true
+
+      - name: Update existing Release assets
+        if: steps.release.outputs.exists == 'true'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: |
+            dist/*
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: ${{ contains(steps.release.outputs.tag, '-') }}
+          # Do not pass body, generate_release_notes, or make_latest when
+          # rebuilding: preserve notes and never move Latest from stale state.
+          overwrite_files: true
 
   publish-aliases:
     name: Publish shared release aliases
@@ -235,7 +256,7 @@ jobs:
     if: ${{ always() && needs.release.result == 'success' && needs.release.outputs.stable == 'true' && (github.event_name != 'workflow_dispatch' || inputs.update_aliases) }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     # Only this convergent job mutates shared aliases. GitHub may replace an
     # older pending job, so every surviving job reconciles all published stable
@@ -261,6 +282,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Reconcile published stable aliases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git fetch --force --tags origin main:refs/remotes/origin/main
@@ -268,6 +291,8 @@ jobs:
           declare -A MAJOR_TAGS
           declare -A MINOR_TAGS
           LATEST_TAG=""
+          LATEST_RELEASE_ID=""
+          REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
 
           while IFS= read -r TAG; do
             [ -n "${TAG}" ] || continue
@@ -275,10 +300,28 @@ jobs:
               echo "Skipping ${TAG}: release commit is not on main"
               continue
             fi
-            SOURCE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
-            if ! docker buildx imagetools inspect "${SOURCE}" >/dev/null 2>&1; then
-              echo "Skipping ${TAG}: immutable image is unavailable"
+            RELEASE_STATE="$(gh api graphql \
+              -f query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { release(tagName: $tag) { databaseId isDraft isPrerelease } } }' \
+              -F owner="${GITHUB_REPOSITORY_OWNER}" \
+              -F name="${REPOSITORY_NAME}" \
+              -F tag="${TAG}" \
+              --jq 'if .data.repository.release == null then "missing" elif .data.repository.release.isDraft then "draft" elif .data.repository.release.isPrerelease then "prerelease" else (.data.repository.release.databaseId | tostring) end')"
+            if [ "${RELEASE_STATE}" = "missing" ] || [ "${RELEASE_STATE}" = "draft" ] || [ "${RELEASE_STATE}" = "prerelease" ]; then
+              echo "Skipping ${TAG}: release is ${RELEASE_STATE}"
               continue
+            fi
+            RELEASE_ID="${RELEASE_STATE}"
+            SOURCE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
+            if ! INSPECT_ERROR="$(docker buildx imagetools inspect "${SOURCE}" 2>&1 >/dev/null)"; then
+              MANIFEST_URL="https://${REGISTRY}/v2/${IMAGE_NAME}/manifests/${TAG}"
+              if printf '%s\n' "${INSPECT_ERROR}" | grep -Eqi 'manifest unknown|name unknown' || \
+                printf '%s\n' "${INSPECT_ERROR}" | grep -Fqi "${SOURCE}: not found" || \
+                printf '%s\n' "${INSPECT_ERROR}" | grep -Fqi "${MANIFEST_URL}: 404 Not Found"; then
+                echo "Skipping ${TAG}: immutable image is unavailable"
+                continue
+              fi
+              echo "Failed to inspect ${SOURCE}: ${INSPECT_ERROR}" >&2
+              exit 1
             fi
 
             VERSION="${TAG#v}"
@@ -287,6 +330,7 @@ jobs:
             MINOR="${MAJOR}.${REST%%.*}"
             if [ -z "${LATEST_TAG}" ]; then
               LATEST_TAG="${TAG}"
+              LATEST_RELEASE_ID="${RELEASE_ID}"
             fi
             if [ -z "${MAJOR_TAGS[${MAJOR}]+x}" ]; then
               MAJOR_TAGS["${MAJOR}"]="${TAG}"
@@ -316,3 +360,7 @@ jobs:
           docker buildx imagetools create \
             --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
             "${REGISTRY}/${IMAGE_NAME}:${LATEST_TAG}"
+
+          gh api --method PATCH \
+            "repos/${GITHUB_REPOSITORY}/releases/${LATEST_RELEASE_ID}" \
+            -f make_latest=true >/dev/null
