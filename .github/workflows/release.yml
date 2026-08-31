@@ -313,7 +313,10 @@ jobs:
             RELEASE_ID="${RELEASE_STATE}"
             SOURCE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
             if ! INSPECT_ERROR="$(docker buildx imagetools inspect "${SOURCE}" 2>&1 >/dev/null)"; then
-              if printf '%s\n' "${INSPECT_ERROR}" | grep -Eqi 'manifest unknown|name unknown|not found'; then
+              MANIFEST_URL="https://${REGISTRY}/v2/${IMAGE_NAME}/manifests/${TAG}"
+              if printf '%s\n' "${INSPECT_ERROR}" | grep -Eqi 'manifest unknown|name unknown' || \
+                printf '%s\n' "${INSPECT_ERROR}" | grep -Fqi "${SOURCE}: not found" || \
+                printf '%s\n' "${INSPECT_ERROR}" | grep -Fqi "${MANIFEST_URL}: 404 Not Found"; then
                 echo "Skipping ${TAG}: immutable image is unavailable"
                 continue
               fi
