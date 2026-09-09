@@ -224,6 +224,9 @@ jobs:
           docker images herald-dingtalk:test
           docker inspect herald-dingtalk:test
 
+      - name: Assert image runs as fixed non-root user
+        run: test "$(docker inspect --format '{{.Config.User}}' herald-dingtalk:test)" = "10001:10001"
+
   # Full build check
   build:
     name: Build Check
