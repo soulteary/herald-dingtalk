@@ -96,7 +96,7 @@ services:
 
 When a credential is missing or has surrounding whitespace, `DINGTALK_AGENT_ID` is not a positive integer, or `DINGTALK_LOOKUP_MODE` is unsupported, both provider endpoints return `503` with `error_code: "provider_down"`. The startup warning identifies the invalid variable without printing credential values.
 
-Use `GET /healthz` as the liveness probe and `GET /readyz` as the readiness probe. The container image runs as a non-root user and includes a Docker health check against `/healthz`.
+Use `GET /healthz` as the liveness probe and `GET /readyz` as the readiness probe. The container image runs as the fixed numeric user and group `10001:10001` and includes a Docker health check against `/healthz`.
 
 Every request emits a structured access log with method, path, status, latency, client metadata, and `request_id`. A caller-provided `X-Request-ID` is propagated; otherwise the service generates one and returns it in the response. Headers, query strings, and request bodies are deliberately excluded from access logs.
 

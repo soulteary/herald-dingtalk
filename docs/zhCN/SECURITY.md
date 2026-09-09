@@ -26,7 +26,7 @@
 
 - **网络**：将 herald-dingtalk 部署在内网或私有网络中，仅允许 Herald（或统一网关）访问；不要将 herald-dingtalk 直接暴露到公网，除非在 HTTPS 与严格访问控制之后。
 - **HTTPS**：若 herald-dingtalk 会经过公网或不可信网络被访问，应在其前增加带 TLS 的反向代理（如 Traefik、nginx）。此时 Herald 的 `HERALD_DINGTALK_API_URL` 应使用 `https://`。
-- **最小权限**：使用非 root 用户运行进程；在 Docker 中尽量使用非 root 用户镜像。
+- **最小权限**：使用非 root 用户运行进程。官方容器固定使用数值用户和用户组 `10001:10001`。
 - **请求边界**：请求体默认限制为 64 KiB（最高可配置到 1 MiB），HTTP 读写设置超时，并通过 panic 恢复避免单个处理器异常终止进程。
 - **日志**：结构化访问日志仅记录 method、path、status、latency、客户端元数据和请求 ID，不记录请求头、查询字符串、请求体、接收者标识、手机号、userid 或 OAuth 授权码；业务事件使用相同请求 ID 便于关联。
 - **运维**：密钥注入、探针、上线验证和多副本幂等限制见 [运维指南](OPERATIONS.md)。
