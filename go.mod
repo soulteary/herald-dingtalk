@@ -6,8 +6,8 @@ require (
 	github.com/gofiber/fiber/v3 v3.5.0
 	github.com/pterm/pterm v0.12.83
 	github.com/soulteary/cli-kit v1.9.0
-	github.com/soulteary/health-kit/v2 v2.2.0
-	github.com/soulteary/logger-kit/v2 v2.2.0
+	github.com/soulteary/health-kit/v2 v2.3.0
+	github.com/soulteary/logger-kit/v2 v2.3.0
 	github.com/soulteary/provider-kit v1.7.0
 	github.com/soulteary/version-kit/v2 v2.2.0
 )
