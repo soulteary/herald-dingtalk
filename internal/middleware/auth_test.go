@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/soulteary/logger-kit/v2"
+	"github.com/soulteary/logger-kit/v3"
 )
 
 func TestRequireAPIKey(t *testing.T) {

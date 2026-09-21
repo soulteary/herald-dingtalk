@@ -16,8 +16,8 @@ import (
 	"github.com/pterm/pterm/putils"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/router"
-	"github.com/soulteary/logger-kit/v2"
-	version "github.com/soulteary/version-kit/v2"
+	"github.com/soulteary/logger-kit/v3"
+	version "github.com/soulteary/version-kit/v4"
 )
 
 // The shutdown budget exceeds the maximum accepted request timeout so a

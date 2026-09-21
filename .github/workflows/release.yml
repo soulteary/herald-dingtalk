@@ -138,7 +138,7 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           COMMIT=${{ steps.version.outputs.commit }}
           BUILD_DATE=${{ steps.version.outputs.build_date }}
-          LDFLAGS="-s -w -X 'github.com/soulteary/version-kit/v2.Version=${VERSION}' -X 'github.com/soulteary/version-kit/v2.Commit=${COMMIT}' -X 'github.com/soulteary/version-kit/v2.BuildDate=${BUILD_DATE}'"
+          LDFLAGS="-s -w -X 'github.com/soulteary/version-kit/v4.Version=${VERSION}' -X 'github.com/soulteary/version-kit/v4.Commit=${COMMIT}' -X 'github.com/soulteary/version-kit/v4.BuildDate=${BUILD_DATE}'"
 
           # Verify the linker symbols before producing cross-platform artifacts.
           CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "${LDFLAGS}" -o dist/herald-dingtalk-verify .

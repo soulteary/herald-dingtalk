@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/soulteary/logger-kit/v2"
+	"github.com/soulteary/logger-kit/v3"
+	loggerfiber "github.com/soulteary/logger-kit/v3/fiberadapter"
 )
 
 func TestRequestLoggerAddsMiddlewareRequestID(t *testing.T) {
@@ -18,7 +19,7 @@ func TestRequestLoggerAddsMiddlewareRequestID(t *testing.T) {
 	config.GenerateRequestID = func() string { return "generated-request-id" }
 
 	app := fiber.New()
-	app.Use(logger.FiberMiddleware(config))
+	app.Use(loggerfiber.Middleware(loggerfiber.Config{MiddlewareConfig: config}))
 	app.Get("/", func(c fiber.Ctx) error {
 		RequestLogger(c, base).Info().Msg("application event")
 		return c.SendStatus(fiber.StatusNoContent)

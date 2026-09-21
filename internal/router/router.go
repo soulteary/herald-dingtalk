@@ -4,14 +4,15 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/helmet"
 	"github.com/gofiber/fiber/v3/middleware/recover"
-	"github.com/soulteary/health-kit/v2"
+	healthfiber "github.com/soulteary/health-kit/v4/fiberadapter"
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/handler"
 	"github.com/soulteary/herald-dingtalk/internal/idempotency"
 	internalmiddleware "github.com/soulteary/herald-dingtalk/internal/middleware"
 	"github.com/soulteary/herald-dingtalk/internal/observability"
-	"github.com/soulteary/logger-kit/v2"
+	"github.com/soulteary/logger-kit/v3"
+	loggerfiber "github.com/soulteary/logger-kit/v3/fiberadapter"
 	"github.com/soulteary/provider-kit"
 )
 
@@ -22,7 +23,7 @@ func Setup(app *fiber.App, log *logger.Logger) {
 	accessLogConfig.IncludeHeaders = false
 	accessLogConfig.IncludeQuery = false
 	accessLogConfig.IncludeBody = false
-	app.Use(logger.FiberMiddleware(accessLogConfig))
+	app.Use(loggerfiber.Middleware(loggerfiber.Config{MiddlewareConfig: accessLogConfig}))
 	app.Use(recover.New())
 	app.Use(helmet.New())
 
@@ -54,7 +55,7 @@ func Setup(app *fiber.App, log *logger.Logger) {
 		}
 		return handler.ResolveHandler(c, dingtalkClient, log)
 	})
-	app.Get("/healthz", health.SimpleFiberHandler("herald-dingtalk"))
+	app.Get("/healthz", healthfiber.SimpleHandler("herald-dingtalk"))
 	app.Get("/readyz", readinessHandler)
 }
 
