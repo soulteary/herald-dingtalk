@@ -6,6 +6,8 @@ The project follows [Semantic Versioning](https://semver.org/). Release tags inc
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-09-21
+
 ### Changed
 
 - Upgraded the internal kit dependencies to their latest major releases: `health-kit` v2.3.0 to v4.0.0, `logger-kit` v2.3.0 to v3.0.0, and `version-kit` v2.2.0 to v4.0.0. Each new major line moves its Fiber-facing API into a `fiberadapter` subpackage, so the access log middleware, the request ID lookup, and the `/healthz` handler are now sourced from `logger-kit/v3/fiberadapter` and `health-kit/v4/fiberadapter`. `cli-kit` and `provider-kit` are unchanged.
@@ -54,4 +56,6 @@ v1.0.0 is the first stable release. It consolidates the HTTP provider contract, 
 - Use `/healthz` for liveness and `/readyz` for readiness. Readiness validates local configuration only and does not call DingTalk.
 - Do not assume idempotency works across replicas. Keep a single replica or add deterministic external routing/deduplication when cross-replica guarantees are required.
 
+[Unreleased]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.3...HEAD
+[1.2.3]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.2...v1.2.3
 [1.0.0]: https://github.com/soulteary/herald-dingtalk/compare/v0.7.0...v1.0.0
