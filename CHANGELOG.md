@@ -4,6 +4,14 @@ Notable changes to herald-dingtalk are documented in this file.
 
 The project follows [Semantic Versioning](https://semver.org/). Release tags include the `v` prefix, while `herald-dingtalk --version` prints the version without it.
 
+## [Unreleased]
+
+### Changed
+
+- Upgraded the internal kit dependencies to their latest major releases: `health-kit` v2.3.0 to v4.0.0, `logger-kit` v2.3.0 to v3.0.0, and `version-kit` v2.2.0 to v4.0.0. Each new major line moves its Fiber-facing API into a `fiberadapter` subpackage, so the access log middleware, the request ID lookup, and the `/healthz` handler are now sourced from `logger-kit/v3/fiberadapter` and `health-kit/v4/fiberadapter`. `cli-kit` and `provider-kit` are unchanged.
+- Release, CI, and Dockerfile linker paths now target `version-kit/v4`. A stale `-X` path is not a build error, so a missed path would have silently shipped binaries reporting `dev`.
+- Service behavior is unchanged: access log fields including `request_id`, the `/healthz` response body, and all routes are identical to the previous release.
+
 ## [1.0.0] - 2026-08-26
 
 v1.0.0 is the first stable release. It consolidates the HTTP provider contract, deployment safeguards, and release process introduced during the v0.x series.

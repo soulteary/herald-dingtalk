@@ -10,7 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
-	"github.com/soulteary/logger-kit/v2"
+	"github.com/soulteary/logger-kit/v3"
 )
 
 func TestResolveHandler_Success(t *testing.T) {

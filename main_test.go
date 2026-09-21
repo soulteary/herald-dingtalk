@@ -17,8 +17,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/pterm/pterm"
 	"github.com/soulteary/herald-dingtalk/internal/config"
-	"github.com/soulteary/logger-kit/v2"
-	version "github.com/soulteary/version-kit/v2"
+	"github.com/soulteary/logger-kit/v3"
+	version "github.com/soulteary/version-kit/v4"
 )
 
 func TestShowBanner(t *testing.T) {

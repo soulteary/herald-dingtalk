@@ -16,7 +16,7 @@ import (
 	"github.com/soulteary/herald-dingtalk/internal/config"
 	"github.com/soulteary/herald-dingtalk/internal/dingtalk"
 	"github.com/soulteary/herald-dingtalk/internal/idempotency"
-	"github.com/soulteary/logger-kit/v2"
+	"github.com/soulteary/logger-kit/v3"
 	"github.com/soulteary/provider-kit"
 )
 
