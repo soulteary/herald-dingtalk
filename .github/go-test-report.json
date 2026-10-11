@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "tests": {
+    "total": 100,
+    "passed": 100,
+    "failed": 0,
+    "skipped": 0
+  },
+  "coverage": {
+    "covered_statements": 509,
+    "total_statements": 552,
+    "percentage": 92.21,
+    "threshold": 90
+  },
+  "packages": [
+    {
+      "name": ".",
+      "status": "pass",
+      "tests": 8,
+      "failed": 0,
+      "coverage": 66.67
+    },
+    {
+      "name": "internal/config",
+      "status": "pass",
+      "tests": 6,
+      "failed": 0,
+      "coverage": 100
+    },
+    {
+      "name": "internal/dingtalk",
+      "status": "pass",
+      "tests": 26,
+      "failed": 0,
+      "coverage": 90.23
+    },
+    {
+      "name": "internal/handler",
+      "status": "pass",
+      "tests": 32,
+      "failed": 0,
+      "coverage": 96.32
+    },
+    {
+      "name": "internal/idempotency",
+      "status": "pass",
+      "tests": 15,
+      "failed": 0,
+      "coverage": 97.5
+    },
+    {
+      "name": "internal/middleware",
+      "status": "pass",
+      "tests": 4,
+      "failed": 0,
+      "coverage": 100
+    },
+    {
+      "name": "internal/observability",
+      "status": "pass",
+      "tests": 2,
+      "failed": 0,
+      "coverage": 100
+    },
+    {
+      "name": "internal/router",
+      "status": "pass",
+      "tests": 7,
+      "failed": 0,
+      "coverage": 100
+    }
+  ],
+  "failures": null
+}
