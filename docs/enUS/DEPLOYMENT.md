@@ -17,7 +17,7 @@ chmod +x herald-dingtalk-linux-amd64
 # 1.0.0
 ```
 
-Release binaries are also available for Linux ARM64, macOS AMD64/ARM64, and Windows AMD64/ARM64. Building from source requires Go 1.26.6 or later:
+Release binaries are also available for Linux ARM64, macOS AMD64/ARM64, and Windows AMD64/ARM64. Building from source requires Go 1.27.2 or later:
 
 ```bash
 # Build
