@@ -1,6 +1,6 @@
 # herald-dingtalk
 
-[![Go Test Coverage](./.github/coverage.svg)](./.github/go-test-report.md) [![Go Report Card](./.github/goreportcard.svg)](./.github/goreportcard-report.md) [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE) [![Go Version](https://img.shields.io/badge/go-1.27.2+-blue.svg)](https://golang.org)
+[![Go Test Coverage](./.github/coverage.svg)](./.github/go-test-report.md) [![Go Report Card](./.github/goreportcard.svg)](./.github/goreportcard-report.md) [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE) [![Go Version](https://img.shields.io/badge/go-1.27.3+-blue.svg)](https://golang.org)
 
 
 ## Multi-language Documentation
@@ -9,7 +9,7 @@
 
 DingTalk notification adapter for [Herald](https://github.com/soulteary/herald). Herald forwards verification codes over HTTP to this service; herald-dingtalk calls the DingTalk work notification API to deliver messages. All DingTalk credentials and business logic live in this project only—Herald does not hold any DingTalk credentials.
 
-The HTTP server uses Fiber v3.5.0 and the matching v2 module lines of the Fiber-facing kit packages. Building from source requires Go 1.27.2 or later.
+The HTTP server uses Fiber v3.5.0 and the matching v2 module lines of the Fiber-facing kit packages. Building from source requires Go 1.27.3 or later.
 
 ## Core Features
 
