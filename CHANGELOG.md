@@ -6,6 +6,11 @@ The project follows [Semantic Versioning](https://semver.org/). Release tags inc
 
 ## [Unreleased]
 
+### Changed
+
+- Upgrade `health-kit/v4` from v4.0.2 to v4.0.4; refresh the required Fiber/network
+  dependency graph and module checksums.
+
 ## [1.2.5] - 2026-10-22
 
 ### Changed
