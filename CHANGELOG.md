@@ -87,6 +87,8 @@ v1.0.0 is the first stable release. It consolidates the HTTP provider contract, 
 - Use `/healthz` for liveness and `/readyz` for readiness. Readiness validates local configuration only and does not call DingTalk.
 - Do not assume idempotency works across replicas. Keep a single replica or add deterministic external routing/deduplication when cross-replica guarantees are required.
 
-[Unreleased]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.3...HEAD
+[Unreleased]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.6...HEAD
+[1.2.6]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.5...v1.2.6
+[1.2.5]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.4...v1.2.5
 [1.2.3]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.2...v1.2.3
 [1.0.0]: https://github.com/soulteary/herald-dingtalk/compare/v0.7.0...v1.0.0
