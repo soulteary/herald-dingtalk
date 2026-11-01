@@ -2,14 +2,18 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -308,5 +312,136 @@ func TestMainVersion(t *testing.T) {
 	}
 	if strings.TrimSpace(string(output)) != version.Version {
 		t.Fatalf("version output = %q", output)
+	}
+}
+
+func TestMainReportsBindFailureAndExits(t *testing.T) {
+	if os.Getenv("HERALD_TEST_MAIN_BIND_FAILURE") == "1" {
+		config.Port = "invalid-port"
+		os.Args = []string{"herald-dingtalk"}
+		main()
+		t.Fatal("main returned after a bind failure")
+	}
+	args := []string{"-test.run=^TestMainReportsBindFailureAndExits$"}
+	if coverage := flag.Lookup("test.gocoverdir"); coverage != nil && coverage.Value.String() != "" {
+		args = append(args, "-test.gocoverdir="+coverage.Value.String())
+	}
+	cmd := exec.Command(os.Args[0], args...)
+	cmd.Env = append(os.Environ(), "HERALD_TEST_MAIN_BIND_FAILURE=1")
+	output, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatalf("exit error=%v, output=%s", err, output)
+	}
+	if !strings.Contains(string(output), "server stopped") {
+		t.Fatalf("bind failure was not reported: %s", output)
+	}
+}
+
+type forcedAcceptErrorListener struct {
+	net.Listener
+	started, stopped    chan struct{}
+	startOnce, stopOnce sync.Once
+	waitForClose        bool
+}
+
+func (l *forcedAcceptErrorListener) Accept() (net.Conn, error) {
+	l.startOnce.Do(func() { close(l.started) })
+	if l.waitForClose {
+		<-l.stopped
+	}
+	return nil, errors.New("injected listener failure")
+}
+func (l *forcedAcceptErrorListener) Close() error {
+	l.stopOnce.Do(func() { close(l.stopped) })
+	return l.Listener.Close()
+}
+
+func TestServePropagatesListenerFailuresBeforeAndAfterShutdown(t *testing.T) {
+	for _, afterShutdown := range []bool{false, true} {
+		t.Run(fmt.Sprint(afterShutdown), func(t *testing.T) {
+			base, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			listener := &forcedAcceptErrorListener{Listener: base, started: make(chan struct{}), stopped: make(chan struct{}), waitForClose: afterShutdown}
+			defer func() { _ = listener.Close() }()
+			app := fiber.New()
+			quit := make(chan os.Signal, 1)
+			done := make(chan error, 1)
+			log := logger.New(logger.Config{Level: logger.Disabled, Output: io.Discard})
+			go func() { done <- serve(app, listener, quit, time.Second, log) }()
+			select {
+			case <-listener.started:
+			case <-time.After(5 * time.Second):
+				t.Fatal("listener did not start")
+			}
+			want := "serve:"
+			if afterShutdown {
+				want = "serve after shutdown:"
+				quit <- syscall.SIGTERM
+			}
+			select {
+			case err := <-done:
+				if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "injected listener failure") {
+					t.Fatalf("listener failure=%v, want %q", err, want)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("listener failure was not propagated")
+			}
+		})
+	}
+}
+
+func TestServeReportsShutdownDeadlineForBlockedRequest(t *testing.T) {
+	app := fiber.New()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	app.Get("/blocked", func(c fiber.Ctx) error { close(started); <-release; return c.SendStatus(204) })
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = listener.Close() }()
+	address := listener.Addr().String()
+	quit := make(chan os.Signal, 1)
+	done := make(chan error, 1)
+	log := logger.New(logger.Config{Level: logger.Disabled, Output: io.Discard})
+	go func() { done <- serve(app, listener, quit, 10*time.Millisecond, log) }()
+	requestDone := make(chan struct{})
+	client := &http.Client{Timeout: 3 * time.Second}
+	go func() {
+		defer close(requestDone)
+		response, err := client.Get("http://" + address + "/blocked")
+		if err == nil {
+			_, _ = io.Copy(io.Discard, response.Body)
+			_ = response.Body.Close()
+		}
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not enter handler")
+	}
+	quit <- syscall.SIGTERM
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "shutdown:") {
+			t.Fatalf("shutdown deadline error=%v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdown ignored deadline")
+	}
+	if connection, err := net.DialTimeout("tcp", address, time.Second); err == nil {
+		_ = connection.Close()
+		t.Fatal("timed out server still accepts connections")
+	}
+	releaseOnce.Do(func() { close(release) })
+	select {
+	case <-requestDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not finish after release")
 	}
 }

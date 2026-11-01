@@ -536,18 +536,20 @@ func TestGetTokenWaiterRetriesAfterLeaderCancellation(t *testing.T) {
 	}()
 	<-leaderStarted
 
+	waiterContext := &observedDoneContext{Context: context.Background(), entered: make(chan struct{})}
 	waiterDone := make(chan struct {
 		token string
 		err   error
 	}, 1)
 	go func() {
-		token, err := client.getToken(context.Background())
+		token, err := client.getToken(waiterContext)
 		waiterDone <- struct {
 			token string
 			err   error
 		}{token, err}
 	}()
 
+	<-waiterContext.entered
 	cancelLeader()
 	if err := <-leaderDone; !errors.Is(err, context.Canceled) {
 		t.Fatalf("leader error = %v, want context.Canceled", err)
@@ -562,17 +564,49 @@ func TestGetTokenWaiterRetriesAfterLeaderCancellation(t *testing.T) {
 }
 
 func TestTokenRefreshOnlyRetriesLeaderContextCancellation(t *testing.T) {
-	upstreamTimeout := &tokenRefresh{err: context.DeadlineExceeded}
-	if upstreamTimeout.leaderCanceled {
-		t.Fatal("upstream timeout must not be classified as leader cancellation")
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	leaderCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		close(started)
+		select {
+		case <-release:
+			return nil, context.DeadlineExceeded
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		}
+	})})
+	leaderDone := make(chan error, 1)
+	go func() { _, err := client.getToken(leaderCtx); leaderDone <- err }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("leader did not start")
 	}
-
-	leaderTimeout := &tokenRefresh{
-		err:            context.DeadlineExceeded,
-		leaderCanceled: true,
+	waiterCtx := &observedDoneContext{Context: context.Background(), entered: make(chan struct{})}
+	waiterDone := make(chan error, 1)
+	go func() { _, err := client.getToken(waiterCtx); waiterDone <- err }()
+	select {
+	case <-waiterCtx.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("waiter did not join refresh")
 	}
-	if !leaderTimeout.leaderCanceled {
-		t.Fatal("leader context deadline must allow a live waiter to retry")
+	close(release)
+	for _, done := range []chan error{leaderDone, waiterDone} {
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("upstream timeout=%v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout was not propagated")
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("upstream timeout incorrectly retried %d requests", calls.Load())
 	}
 }
 
@@ -726,5 +760,123 @@ func TestOperationsPropagateTransportFailures(t *testing.T) {
 				t.Fatal("transport failure was ignored")
 			}
 		})
+	}
+}
+
+func TestProviderFailureBoundaries(t *testing.T) {
+	if err := withCategory(ErrorCategoryUpstream, nil); err != nil {
+		t.Fatalf("nil error became failure: %v", err)
+	}
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests} {
+		err := oauthError("oauth", &httpStatusError{operation: "oauth", status: status, body: []byte(`{"message":"private upstream detail"}`)})
+		want := ErrorCategoryProviderDown
+		if status == http.StatusTooManyRequests {
+			want = ErrorCategoryRateLimited
+		}
+		if got := ClassifyError(err); got != want {
+			t.Fatalf("HTTP %d category=%s, want %s", status, got, want)
+		}
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := NewClient("key", "secret", "1")
+	if _, err := client.SendWorkNotify(canceled, "user", "body"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled send error=%v", err)
+	}
+	for _, operation := range []string{"send malformed response", "oauth missing token"} {
+		t.Run(operation, func(t *testing.T) {
+			client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				body := "{"
+				if operation == "oauth missing token" {
+					body = `{"code":"InvalidCode","message":"expired"}`
+				}
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+			})})
+			client.token = "cached-token"
+			client.expires = time.Now().Add(time.Hour)
+			if operation == "send malformed response" {
+				if _, err := client.SendWorkNotify(context.Background(), "user", "body"); err == nil || !strings.Contains(err.Error(), "send parse") {
+					t.Fatalf("malformed send response error=%v", err)
+				}
+			} else {
+				if _, err := client.ResolveAuthCode(context.Background(), "expired-code"); ClassifyError(err) != ErrorCategoryInvalidRequest {
+					t.Fatalf("missing OAuth token category=%s", ClassifyError(err))
+				}
+			}
+		})
+	}
+}
+
+type observedDoneContext struct {
+	context.Context
+	entered chan struct{}
+	once    sync.Once
+}
+
+func (c *observedDoneContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.entered) })
+	return c.Context.Done()
+}
+
+func TestWaitingCallerCanCancelWithoutAbortingLeader(t *testing.T) {
+	leaderStarted := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	t.Cleanup(cancelLeader)
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		close(leaderStarted)
+		select {
+		case <-release:
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"access_token":"leader-token","expires_in":7200}`))}, nil
+	})})
+	leaderDone := make(chan error, 1)
+	go func() {
+		token, err := client.getToken(leaderCtx)
+		if err == nil && token != "leader-token" {
+			err = fmt.Errorf("unexpected leader token")
+		}
+		leaderDone <- err
+	}()
+	select {
+	case <-leaderStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("leader did not start")
+	}
+	base, cancelWaiter := context.WithCancel(context.Background())
+	defer cancelWaiter()
+	waiterCtx := &observedDoneContext{Context: base, entered: make(chan struct{})}
+	waiterDone := make(chan error, 1)
+	go func() { _, err := client.getToken(waiterCtx); waiterDone <- err }()
+	select {
+	case <-waiterCtx.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("caller did not join refresh")
+	}
+	cancelWaiter()
+	select {
+	case err := <-waiterDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("waiter error=%v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("waiter ignored cancellation")
+	}
+	close(release)
+	select {
+	case err := <-leaderDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("leader did not complete")
+	}
+	token, err := client.getToken(context.Background())
+	if err != nil || token != "leader-token" || calls.Load() != 1 {
+		t.Fatalf("leader result not cached: token=%q error=%v calls=%d", token, err, calls.Load())
 	}
 }

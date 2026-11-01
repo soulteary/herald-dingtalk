@@ -6,6 +6,16 @@ The project follows [Semantic Versioning](https://semver.org/). Release tags inc
 
 ## [Unreleased]
 
+### Tests
+
+- Verify real process exit on bind failure, listener failures before/after
+  shutdown, and shutdown deadlines with a blocked HTTP request.
+- Synchronize token-refresh waiters before cancellation and verify upstream
+  timeouts do not trigger an unintended retry; cover provider error boundaries.
+- Raise the CI coverage floor from 95% to 98%; Linux race tests reach 98.0%
+  statement coverage without excluding production code. Production behavior
+  and delivery guarantees are unchanged.
+
 ## [1.2.6] - 2026-11-02
 
 ### Fixed
