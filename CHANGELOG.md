@@ -8,6 +8,15 @@ The project follows [Semantic Versioning](https://semver.org/). Release tags inc
 
 ## [1.2.6] - 2026-11-02
 
+### Fixed
+
+- Log stable provider error categories instead of raw network URLs and upstream
+  error text that can contain application credentials, access tokens or payloads.
+- Use a fixed message for malformed JSON bodies in send and resolve handlers.
+  Existing logs and exports require separate access/retention review and rotation
+  of any exposed credentials; see the security guide.
+
+
 ### Tests
 
 - Cover process startup, version output, SIGTERM shutdown, rejected-token refresh,

@@ -4,7 +4,7 @@
 
 ## 生产检查清单
 
-- 使用带版本的发布镜像 `ghcr.io/soulteary/herald-dingtalk:v1.0.0`；生产环境不要依赖可变的 `latest` 标签。
+- 使用带版本的发布镜像 `ghcr.io/soulteary/herald-dingtalk:v1.2.6`；生产环境不要依赖可变的 `latest` 标签。
 - 通过密钥管理系统注入 `DINGTALK_APP_KEY`、`DINGTALK_APP_SECRET`、`DINGTALK_AGENT_ID` 和 `API_KEY`，不要把真实值写入清单或代码库。
 - 将服务放在私有网络中，只允许 Herald 或经过认证的网关访问 `/v1/send` 和 `/v1/resolve`。
 - `/healthz` 用于存活探测，`/readyz` 用于就绪探测。就绪探针只校验本地配置，不会调用钉钉。
@@ -48,7 +48,7 @@ spec:
       terminationGracePeriodSeconds: 40
       containers:
         - name: herald-dingtalk
-          image: ghcr.io/soulteary/herald-dingtalk:v1.0.0
+          image: ghcr.io/soulteary/herald-dingtalk:v1.2.6
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:

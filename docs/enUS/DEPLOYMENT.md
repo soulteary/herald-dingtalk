@@ -9,12 +9,12 @@ For production rollout, Kubernetes, probes, scaling, and incident triage, also s
 Download a release binary and `checksums.txt` from [GitHub Releases](https://github.com/soulteary/herald-dingtalk/releases):
 
 ```bash
-curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/herald-dingtalk-linux-amd64
-curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/checksums.txt
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.6/herald-dingtalk-linux-amd64
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.6/checksums.txt
 grep 'herald-dingtalk-linux-amd64$' checksums.txt | sha256sum -c -
 chmod +x herald-dingtalk-linux-amd64
 ./herald-dingtalk-linux-amd64 --version
-# 1.0.0
+# 1.2.6
 ```
 
 Release binaries are also available for Linux ARM64, macOS AMD64/ARM64, and Windows AMD64/ARM64. Building from source requires Go 1.27.3 or later:
@@ -31,14 +31,14 @@ go build -o herald-dingtalk .
 
 ```bash
 # Pull a versioned release image
-docker pull ghcr.io/soulteary/herald-dingtalk:v1.0.0
+docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.6
 
 # Run with env vars
 docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  ghcr.io/soulteary/herald-dingtalk:v1.0.0
+  ghcr.io/soulteary/herald-dingtalk:v1.2.6
 ```
 
 Optional: if you use `API_KEY` on herald-dingtalk, pass it and use the same value in Herald as `HERALD_DINGTALK_API_KEY`:
@@ -49,7 +49,7 @@ docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  ghcr.io/soulteary/herald-dingtalk:v1.0.0
+  ghcr.io/soulteary/herald-dingtalk:v1.2.6
 ```
 
 For a local source build, use `docker build -t herald-dingtalk:local .` and substitute that image name in the commands above.
@@ -61,7 +61,7 @@ Minimal example for herald-dingtalk only:
 ```yaml
 services:
   herald-dingtalk:
-    image: ghcr.io/soulteary/herald-dingtalk:v1.0.0
+    image: ghcr.io/soulteary/herald-dingtalk:v1.2.6
     ports:
       - "8083:8083"
     environment:

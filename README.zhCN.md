@@ -80,15 +80,15 @@ Herald 不保存任何钉钉凭证。
 
 ### 构建与运行（二进制）
 
-可以从 [GitHub Releases](https://github.com/soulteary/herald-dingtalk/releases) 下载对应平台的二进制文件和 `checksums.txt`。例如 v1.0.0 发布后：
+可以从 [GitHub Releases](https://github.com/soulteary/herald-dingtalk/releases) 下载对应平台的二进制文件和 `checksums.txt`。例如 v1.2.6：
 
 ```bash
-curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/herald-dingtalk-linux-amd64
-curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.0.0/checksums.txt
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.6/herald-dingtalk-linux-amd64
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.6/checksums.txt
 grep 'herald-dingtalk-linux-amd64$' checksums.txt | sha256sum -c -
 chmod +x herald-dingtalk-linux-amd64
 ./herald-dingtalk-linux-amd64 --version
-# 1.0.0
+# 1.2.6
 ```
 
 从源码构建：
@@ -105,12 +105,12 @@ go build -o herald-dingtalk .
 ### 使用 Docker 运行
 
 ```bash
-docker pull ghcr.io/soulteary/herald-dingtalk:v1.0.0
+docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.6
 docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  ghcr.io/soulteary/herald-dingtalk:v1.0.0
+  ghcr.io/soulteary/herald-dingtalk:v1.2.6
 ```
 
 可选：增加 `-e API_KEY=your_shared_secret`，并在 Herald 侧将 `HERALD_DINGTALK_API_KEY` 设为相同值。

@@ -73,7 +73,7 @@ func sendOnce(ctx context.Context, req provider.HTTPSendRequest, dingtalkClient 
 	if config.LookupMode == config.LookupModeMobile && mobileLike.MatchString(req.To) {
 		resolved, err := dingtalkClient.GetUserIDByMobile(ctx, req.To)
 		if err != nil {
-			log.Warn().Err(err).Msg("send: mobile lookup failed")
+			log.Warn().Str("error_category", string(dingtalk.ClassifyError(err))).Msg("send: mobile lookup failed")
 			status, code, message := mapDingTalkError(err, "")
 			return failureResult(status, code, message)
 		}
@@ -83,7 +83,7 @@ func sendOnce(ctx context.Context, req provider.HTTPSendRequest, dingtalkClient 
 
 	taskID, err := dingtalkClient.SendWorkNotify(ctx, destUserID, content)
 	if err != nil {
-		log.Warn().Err(err).Msg("send_failed: dingtalk API error")
+		log.Warn().Str("error_category", string(dingtalk.ClassifyError(err))).Msg("send_failed: dingtalk API error")
 		status, code, message := mapDingTalkError(err, "")
 		return failureResult(status, code, message)
 	}

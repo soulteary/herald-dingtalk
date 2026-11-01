@@ -36,3 +36,17 @@ This document describes security considerations and recommendations for herald-d
 - Use `API_KEY` in production and keep it secret; configure Herald with `HERALD_DINGTALK_API_KEY` to match.
 - Store DingTalk credentials in env or a secret manager; never in code or committed config.
 - Prefer private network and HTTPS in front of herald-dingtalk; do not expose it publicly without protection.
+
+### Provider and parser diagnostics
+
+Provider failure events now record `error_category` instead of raw `error` text.
+Categories preserve routing and timeout diagnosis without logging credential-bearing
+URLs or upstream messages. Malformed JSON returns `invalid request body`; HTTP
+status and error codes are unchanged. No record or persistent-volume migration is
+needed. Upgrade every replica: old replicas retain exposure, and rollback restores
+it. Existing idempotency state is still process-local and is lost on restart.
+
+Existing logs and exported copies are not rewritten. Restrict access, review
+retention, and delete or redact affected copies under your retention policy.
+Rotate exposed application secrets and invalidate/replace exposed access tokens;
+treat exposed verification or OAuth authorization codes as compromised.

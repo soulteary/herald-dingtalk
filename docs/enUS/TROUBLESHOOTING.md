@@ -24,10 +24,10 @@ This guide helps you diagnose and resolve common issues with herald-dingtalk.
    Look for `send_failed` or DingTalk API errors:
    ```bash
    # If running in Docker
-   docker logs herald-dingtalk 2>&1 | grep -E "send_failed|send ok|errcode"
+   docker logs herald-dingtalk 2>&1 | grep -E "send_failed|send ok|error_category"
    ```
    - `send ok` with `message_id`: herald-dingtalk successfully called DingTalk; delivery issues may be on DingTalk or user side.
-   - `send_failed` with errmsg: note the DingTalk `errcode` and `errmsg` for the next steps.
+   - Use `error_category` and `request_id` to correlate provider failures; raw provider messages and credential-bearing URLs are not logged.
 
 2. **Verify DingTalk configuration**  
    - Confirm `DINGTALK_APP_KEY`, `DINGTALK_APP_SECRET`, and `DINGTALK_AGENT_ID` are set and match the DingTalk open platform.
@@ -100,7 +100,7 @@ herald-dingtalk has `API_KEY` set, but the request either does not send `X-API-K
 
 - The request body has an empty, oversized, whitespace-padded, or control-character-containing `to` field.
 - DingTalk reports that the userid or mobile lookup result is unavailable, including a successful mobile lookup with an empty userid.
-- Client responses deliberately do not include raw DingTalk error details. The structured application log records the upstream error under the same request ID.
+- Client responses deliberately do not include raw DingTalk error details. The structured application log records `error_category` under the same request ID.
 
 ### Solutions
 
@@ -116,7 +116,7 @@ herald-dingtalk has `API_KEY` set, but the request either does not send `X-API-K
 
 - An invalid or expired code returns HTTP 400 with `error_code: "resolve_failed"` and the stable message `"invalid or expired dingtalk authorization code"`.
 - A DingTalk OAuth upstream failure returns HTTP 502 with `error_code: "resolve_failed"` and `"dingtalk request failed"`.
-- Raw OAuth response details are logged under `resolve failed: oauth2 error`; they are not returned to the caller.
+- The `resolve failed: oauth2 error` event records `error_category`; raw OAuth details are neither logged nor returned.
 
 ### Cause
 
