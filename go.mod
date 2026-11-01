@@ -5,11 +5,11 @@ go 1.27.3
 require (
 	github.com/gofiber/fiber/v3 v3.6.1
 	github.com/pterm/pterm v0.12.84
-	github.com/soulteary/cli-kit v1.9.2
-	github.com/soulteary/health-kit/v4 v4.0.4
-	github.com/soulteary/logger-kit/v3 v3.0.3
-	github.com/soulteary/provider-kit v1.7.2
-	github.com/soulteary/version-kit/v4 v4.0.2
+	github.com/soulteary/cli-kit v1.9.3
+	github.com/soulteary/health-kit/v4 v4.0.5
+	github.com/soulteary/logger-kit/v3 v3.0.4
+	github.com/soulteary/provider-kit v1.7.4
+	github.com/soulteary/version-kit/v4 v4.0.3
 )
 
 require (
@@ -18,7 +18,7 @@ require (
 	atomicgo.dev/schedule v0.1.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/containerd/console v1.0.5 // indirect
-	github.com/gofiber/schema v1.9.1 // indirect
+	github.com/gofiber/schema v1.9.2 // indirect
 	github.com/gofiber/utils/v2 v2.6.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.20.3 // indirect
