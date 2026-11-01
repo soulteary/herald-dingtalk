@@ -766,3 +766,18 @@ func TestSendCoordinationFailureResponses(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderInvalidRequestDuringSendUsesStableGatewayError(t *testing.T) {
+	// An OAuth-specific invalid request must remain a gateway failure for sends.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"message":"invalid provider request"}`))
+	}))
+	defer server.Close()
+	client := dingtalk.NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	_, providerErr := client.ResolveAuthCode(context.Background(), "expired-code")
+	status, code, message := mapDingTalkError(providerErr, "")
+	if status != http.StatusBadGateway || code != "send_failed" || message != "dingtalk rejected the provider request" {
+		t.Fatalf("mapped provider failure: %d %s %s", status, code, message)
+	}
+}
