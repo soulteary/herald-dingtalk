@@ -736,3 +736,33 @@ func TestSendOnceMapsMobileLookupErrors(t *testing.T) {
 		t.Fatalf("empty user id result = %#v", result)
 	}
 }
+
+func TestSendCoordinationFailureResponses(t *testing.T) {
+	for _, tt := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{context.Canceled, 504, "timeout"},
+		{context.DeadlineExceeded, 504, "timeout"},
+		{idempotency.ErrAborted, 500, "send_failed"},
+	} {
+		t.Run(tt.err.Error(), func(t *testing.T) {
+			app := fiber.New()
+			log := logger.New(logger.Config{Level: logger.Disabled})
+			app.Post("/", func(c fiber.Ctx) error { return mapSendOutcome(c, idempotency.Result{}, "", tt.err, log) })
+			resp, err := app.Test(httptest.NewRequest(http.MethodPost, "/", nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			var out provider.HTTPSendResponse
+			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode != tt.status || out.OK || out.ErrorCode != tt.code {
+				t.Fatalf("response: %d %+v", resp.StatusCode, out)
+			}
+		})
+	}
+}

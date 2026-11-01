@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -669,5 +670,61 @@ func TestGetUserIDByMobileRejectsMalformedJSON(t *testing.T) {
 	_, err := client.GetUserIDByMobile(context.Background(), "13800138000")
 	if err == nil || !strings.Contains(err.Error(), "getbymobile parse") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestMobileLookupRefreshesRejectedTokenOnce(t *testing.T) {
+	var tokens, lookups atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/gettoken" {
+			n := tokens.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": fmt.Sprint("token-", n), "expires_in": 7200})
+			return
+		}
+		n := lookups.Add(1)
+		if n == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{"errcode": invalidTokenCode})
+			return
+		}
+		if r.URL.Query().Get("access_token") != "token-2" {
+			t.Error("retry did not use refreshed token")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"userid": "resolved-user"}})
+	}))
+	defer server.Close()
+	client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: &redirectTransport{base: server}})
+	user, err := client.GetUserIDByMobile(context.Background(), "13800138000")
+	if err != nil || user != "resolved-user" || tokens.Load() != 2 || lookups.Load() != 2 {
+		t.Fatalf("lookup = %q %v; tokens=%d lookups=%d", user, err, tokens.Load(), lookups.Load())
+	}
+}
+
+func TestOperationsPropagateTransportFailures(t *testing.T) {
+	for _, operation := range []string{"send", "mobile", "oauth-token", "oauth-user"} {
+		t.Run(operation, func(t *testing.T) {
+			upstream := errors.New("connection lost")
+			client := NewClientWithHTTP("key", "secret", "1", &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if operation == "oauth-user" && strings.Contains(r.URL.Path, "userAccessToken") {
+					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"accessToken":"user-token"}`))}, nil
+				}
+				return nil, upstream
+			})})
+			if operation == "send" || operation == "mobile" {
+				client.token = "cached"
+				client.expires = time.Now().Add(time.Hour)
+			}
+			var err error
+			switch operation {
+			case "send":
+				_, err = client.SendWorkNotify(context.Background(), "user", "body")
+			case "mobile":
+				_, err = client.GetUserIDByMobile(context.Background(), "13800138000")
+			default:
+				_, err = client.ResolveAuthCode(context.Background(), "code")
+			}
+			if err == nil {
+				t.Fatal("transport failure was ignored")
+			}
+		})
 	}
 }

@@ -6,6 +6,12 @@ The project follows [Semantic Versioning](https://semver.org/). Release tags inc
 
 ## [Unreleased]
 
+### Tests
+
+- Cover process startup, version output, SIGTERM shutdown, rejected-token refresh,
+  transport failures and idempotency coordination failures. Enforce at least
+  95% total statement coverage in CI. Production behavior is unchanged.
+
 ### Changed
 
 - Upgrade `health-kit/v4` from v4.0.2 to v4.0.4; refresh the required Fiber/network
