@@ -6,6 +6,8 @@ The project follows [Semantic Versioning](https://semver.org/). Release tags inc
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-11-02
+
 ### Tests
 
 - Verify real process exit on bind failure, listener failures before/after
@@ -97,7 +99,8 @@ v1.0.0 is the first stable release. It consolidates the HTTP provider contract, 
 - Use `/healthz` for liveness and `/readyz` for readiness. Readiness validates local configuration only and does not call DingTalk.
 - Do not assume idempotency works across replicas. Keep a single replica or add deterministic external routing/deduplication when cross-replica guarantees are required.
 
-[Unreleased]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.6...HEAD
+[Unreleased]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.7...HEAD
+[1.2.7]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.6...v1.2.7
 [1.2.6]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.5...v1.2.6
 [1.2.5]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.4...v1.2.5
 [1.2.3]: https://github.com/soulteary/herald-dingtalk/compare/v1.2.2...v1.2.3
