@@ -30,9 +30,9 @@ func ResolveHandler(c fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.Lo
 
 	var req ResolveRequest
 	if err := c.Bind().Body(&req); err != nil {
-		log.Warn().Err(err).Msg("resolve invalid_request: body parse error")
+		log.Warn().Msg("resolve invalid_request: body parse error")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"ok": false, "error_code": "invalid_request", "error_message": err.Error(),
+			"ok": false, "error_code": "invalid_request", "error_message": "invalid request body",
 		})
 	}
 	if !validBoundedToken(req.AuthCode, maxAuthCodeLength) {
@@ -51,7 +51,7 @@ func ResolveHandler(c fiber.Ctx, dingtalkClient *dingtalk.Client, log *logger.Lo
 	defer cancel()
 	userid, err := dingtalkClient.ResolveAuthCode(requestCtx, req.AuthCode)
 	if err != nil {
-		log.Warn().Err(err).Msg("resolve failed: oauth2 error")
+		log.Warn().Str("error_category", string(dingtalk.ClassifyError(err))).Msg("resolve failed: oauth2 error")
 		status, code, message := mapDingTalkError(err, "resolve_failed")
 		return c.Status(status).JSON(fiber.Map{
 			"ok": false, "error_code": code, "error_message": message,

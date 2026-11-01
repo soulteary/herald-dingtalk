@@ -24,10 +24,10 @@
    关注 `send_failed` 或钉钉 API 报错：
    ```bash
    # Docker 运行时
-   docker logs herald-dingtalk 2>&1 | grep -E "send_failed|send ok|errcode"
+   docker logs herald-dingtalk 2>&1 | grep -E "send_failed|send ok|error_category"
    ```
    - 若为 `send ok` 且带 `message_id`：herald-dingtalk 已成功调用钉钉；未收到可能是钉钉或用户端问题。
-   - 若为 `send_failed` 并带 errmsg：记下钉钉返回的 `errcode`、`errmsg` 继续排查。
+   - 使用 `error_category` 与 `request_id` 关联排查；不再记录原始上游消息和含凭据的 URL。
 
 2. **核对钉钉配置**  
    - 确认 `DINGTALK_APP_KEY`、`DINGTALK_APP_SECRET`、`DINGTALK_AGENT_ID` 已设置且与开放平台一致。
@@ -100,7 +100,7 @@ herald-dingtalk 已配置 `API_KEY`，但请求未携带 `X-API-Key` 或携带�
 
 - 请求体中的 `to` 为空、过长、包含首尾空白或控制字符。
 - 钉钉报告 userid 或手机号查询结果不可用，包括手机号查询成功但 userid 为空。
-- 客户端响应不会包含钉钉原始错误详情；结构化业务日志会在相同请求 ID 下记录上游错误。
+- 客户端响应不会包含钉钉原始错误详情；结构化业务日志会在相同请求 ID 下记录 `error_category`。
 
 ### 处理
 
@@ -116,7 +116,7 @@ herald-dingtalk 已配置 `API_KEY`，但请求未携带 `X-API-Key` 或携带�
 
 - 授权码无效或过期时返回 HTTP 400、`error_code: "resolve_failed"`，稳定消息为 `"invalid or expired dingtalk authorization code"`。
 - 钉钉 OAuth 上游异常时返回 HTTP 502、`error_code: "resolve_failed"`，消息为 `"dingtalk request failed"`。
-- OAuth 原始响应详情只记录在 `resolve failed: oauth2 error` 日志中，不返回给调用方。
+- `resolve failed: oauth2 error` 日志记录 `error_category`；不记录或返回 OAuth 原始响应详情。
 
 ### 原因
 

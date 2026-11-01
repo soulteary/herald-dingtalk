@@ -31,11 +31,11 @@ func validateSendRequest(c fiber.Ctx, log *logger.Logger) (provider.HTTPSendRequ
 
 	var req provider.HTTPSendRequest
 	if err := c.Bind().Body(&req); err != nil {
-		log.Warn().Err(err).Msg("send invalid_request: body parse error")
-		return provider.HTTPSendRequest{}, &sendRequestFailure{status: fiber.StatusBadRequest, code: "invalid_request", message: err.Error()}
+		log.Warn().Msg("send invalid_request: body parse error")
+		return provider.HTTPSendRequest{}, &sendRequestFailure{status: fiber.StatusBadRequest, code: "invalid_request", message: "invalid request body"}
 	}
 	if req.Channel != "" && req.Channel != provider.ChannelDingTalk.String() {
-		log.Warn().Str("channel", req.Channel).Msg("send invalid_request: unsupported channel")
+		log.Warn().Msg("send invalid_request: unsupported channel")
 		return provider.HTTPSendRequest{}, &sendRequestFailure{status: fiber.StatusBadRequest, code: "invalid_request", message: "channel must be dingtalk"}
 	}
 	req.Channel = provider.ChannelDingTalk.String()
