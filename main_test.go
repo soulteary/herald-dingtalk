@@ -240,3 +240,73 @@ func TestRunReturnsListenError(t *testing.T) {
 		t.Fatalf("run error = %v, want wrapped bind error", err)
 	}
 }
+
+// Exercise the real entrypoint, including signal-driven graceful shutdown.
+func TestMainLifecycle(t *testing.T) {
+	oldPort, oldKey, oldSecret, oldArgs := config.Port, config.AppKey, config.AppSecret, os.Args
+	t.Cleanup(func() { config.Port, config.AppKey, config.AppSecret, os.Args = oldPort, oldKey, oldSecret, oldArgs })
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	config.Port = strings.TrimPrefix(address, "127.0.0.1")
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	config.AppKey, config.AppSecret = "", ""
+	os.Args = []string{"herald-dingtalk"}
+	done := make(chan struct{})
+	go func() { main(); close(done) }()
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		resp, err := client.Get("http://" + address + "/healthz")
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("health status = %d", resp.StatusCode)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("server did not start: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not shut down")
+	}
+	if resp, err := client.Get("http://" + address + "/healthz"); err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("server accepts requests after shutdown")
+	}
+}
+
+func TestMainVersion(t *testing.T) {
+	old := os.Args
+	t.Cleanup(func() { os.Args = old })
+	os.Args = []string{"herald-dingtalk", "--version"}
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldOut := os.Stdout
+	os.Stdout = write
+	defer func() { os.Stdout = oldOut }()
+	main()
+	_ = write.Close()
+	output, err := io.ReadAll(read)
+	_ = read.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(output)) != version.Version {
+		t.Fatalf("version output = %q", output)
+	}
+}
