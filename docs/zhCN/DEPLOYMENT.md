@@ -19,12 +19,12 @@
 从 [GitHub Releases](https://github.com/soulteary/herald-dingtalk/releases) 下载对应平台的二进制文件和 `checksums.txt`：
 
 ```bash
-curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.6/herald-dingtalk-linux-amd64
-curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.6/checksums.txt
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.7/herald-dingtalk-linux-amd64
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.7/checksums.txt
 grep 'herald-dingtalk-linux-amd64$' checksums.txt | sha256sum -c -
 chmod +x herald-dingtalk-linux-amd64
 ./herald-dingtalk-linux-amd64 --version
-# 1.2.6
+# 1.2.7
 ```
 
 发布页同时提供 Linux ARM64、macOS AMD64/ARM64 和 Windows AMD64/ARM64 二进制文件。
@@ -71,7 +71,7 @@ export PORT=:8083
 生产部署应使用不可变的版本标签：
 
 ```bash
-docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.6
+docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.7
 ```
 
 如需从源码构建，在项目根目录（含 `Dockerfile`、`go.mod`、`go.sum`）执行：
@@ -99,7 +99,7 @@ docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  ghcr.io/soulteary/herald-dingtalk:v1.2.6
+  ghcr.io/soulteary/herald-dingtalk:v1.2.7
 ```
 
 启用 API Key 鉴权时，需与 Herald 侧 `HERALD_DINGTALK_API_KEY` 一致：
@@ -110,13 +110,13 @@ docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  ghcr.io/soulteary/herald-dingtalk:v1.2.6
+  ghcr.io/soulteary/herald-dingtalk:v1.2.7
 ```
 
 使用 `.env` 文件（项目内可复制 `.env.example` 为 `.env` 并填写）：
 
 ```bash
-docker run -d --name herald-dingtalk -p 8083:8083 --env-file .env ghcr.io/soulteary/herald-dingtalk:v1.2.6
+docker run -d --name herald-dingtalk -p 8083:8083 --env-file .env ghcr.io/soulteary/herald-dingtalk:v1.2.7
 ```
 
 ### 2.3 健康检查
@@ -139,7 +139,7 @@ curl -s http://localhost:8083/healthz
 ```yaml
 services:
   herald-dingtalk:
-    image: ghcr.io/soulteary/herald-dingtalk:v1.2.6
+    image: ghcr.io/soulteary/herald-dingtalk:v1.2.7
     ports:
       - "8083:8083"
     environment:
@@ -155,7 +155,7 @@ services:
 ```yaml
 services:
   herald-dingtalk:
-    image: ghcr.io/soulteary/herald-dingtalk:v1.2.6
+    image: ghcr.io/soulteary/herald-dingtalk:v1.2.7
     ports:
       - "8083:8083"
     env_file:
