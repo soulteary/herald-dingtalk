@@ -4,7 +4,7 @@
 
 | Metric | Value |
 | ------ | ----- |
-| Files | 25 |
+| Files | 26 |
 | Issues | 0 |
 
 ## Checks

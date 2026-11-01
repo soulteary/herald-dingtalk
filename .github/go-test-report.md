@@ -4,21 +4,21 @@
 
 | Metric | Value |
 | --- | --- |
-| Total | 100 |
-| Passed | 100 |
+| Total | 107 |
+| Passed | 107 |
 | Failed | 0 |
 | Skipped | 0 |
-| Coverage | 92.21% |
+| Coverage | 95.65% |
 | Threshold | 90.00% |
 
 ### Packages
 
 | Package | Status | Tests | Failed | Coverage |
 | --- | --- | --- | --- | --- |
-| . | pass | 8 | 0 | 66.67% |
+| . | pass | 10 | 0 | 88.89% |
 | internal/config | pass | 6 | 0 | 100.00% |
-| internal/dingtalk | pass | 26 | 0 | 90.23% |
-| internal/handler | pass | 32 | 0 | 96.32% |
+| internal/dingtalk | pass | 28 | 0 | 92.56% |
+| internal/handler | pass | 35 | 0 | 99.26% |
 | internal/idempotency | pass | 15 | 0 | 97.50% |
 | internal/middleware | pass | 4 | 0 | 100.00% |
 | internal/observability | pass | 2 | 0 | 100.00% |

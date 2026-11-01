@@ -1,24 +1,24 @@
 {
   "schema_version": "1.0",
   "tests": {
-    "total": 100,
-    "passed": 100,
+    "total": 107,
+    "passed": 107,
     "failed": 0,
     "skipped": 0
   },
   "coverage": {
-    "covered_statements": 509,
+    "covered_statements": 528,
     "total_statements": 552,
-    "percentage": 92.21,
+    "percentage": 95.65,
     "threshold": 90
   },
   "packages": [
     {
       "name": ".",
       "status": "pass",
-      "tests": 8,
+      "tests": 10,
       "failed": 0,
-      "coverage": 66.67
+      "coverage": 88.89
     },
     {
       "name": "internal/config",
@@ -30,16 +30,16 @@
     {
       "name": "internal/dingtalk",
       "status": "pass",
-      "tests": 26,
+      "tests": 28,
       "failed": 0,
-      "coverage": 90.23
+      "coverage": 92.56
     },
     {
       "name": "internal/handler",
       "status": "pass",
-      "tests": 32,
+      "tests": 35,
       "failed": 0,
-      "coverage": 96.32
+      "coverage": 99.26
     },
     {
       "name": "internal/idempotency",
