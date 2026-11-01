@@ -8,7 +8,7 @@
 
 - **运行环境**：Linux / macOS / Windows（推荐 Linux 生产环境）。
 - **本地构建**：Go 1.27.3 或更高版本（参见 [go.mod](../../go.mod)）。
-- **钉钉应用**：在钉钉开放平台已创建具备「工作通知」能力的企业内部应用，并获取 AppKey、AppSecret、AgentID。详见本文 [钉钉侧准备](#钉钉侧准备)。
+- **钉钉应用**：在钉钉开放平台已创建具备「工作通知」能力的企业内部应用，并获取 AppKey、AppSecret、AgentID。详见本文 [钉钉侧准备](#六钉钉侧准备)。
 
 ---
 
@@ -43,7 +43,7 @@ go build -ldflags "-w -s -X 'github.com/soulteary/version-kit/v4.Version=1.0.0' 
 
 ### 1.2 运行
 
-需先设置钉钉相关环境变量（见下方 [配置](#配置)）。可直接在 shell 中导出，或使用 `.env` 文件（需自行 `export` 或配合 `env` 使用，本程序不自动加载 `.env`）。
+需先设置钉钉相关环境变量（见下方 [配置](#四配置)）。可直接在 shell 中导出，或使用 `.env` 文件（需自行 `export` 或配合 `env` 使用，本程序不自动加载 `.env`）。
 
 ```bash
 # 使用环境变量
