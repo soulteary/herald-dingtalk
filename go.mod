@@ -1,15 +1,15 @@
 module github.com/soulteary/herald-dingtalk
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/gofiber/fiber/v3 v3.6.1
 	github.com/pterm/pterm v0.12.84
-	github.com/soulteary/cli-kit v1.9.3
-	github.com/soulteary/health-kit/v4 v4.0.5
-	github.com/soulteary/logger-kit/v3 v3.0.4
-	github.com/soulteary/provider-kit v1.7.4
-	github.com/soulteary/version-kit/v4 v4.0.3
+	github.com/soulteary/cli-kit v1.9.4
+	github.com/soulteary/health-kit/v4 v4.0.6
+	github.com/soulteary/logger-kit/v3 v3.0.5
+	github.com/soulteary/provider-kit v1.7.5
+	github.com/soulteary/version-kit/v4 v4.0.4
 )
 
 require (
