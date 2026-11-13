@@ -80,15 +80,15 @@ Herald does not hold any DingTalk credentials.
 
 ### Build & run (binary)
 
-Download a platform binary and `checksums.txt` from [GitHub Releases](https://github.com/soulteary/herald-dingtalk/releases). For example, for v1.2.7:
+Download a platform binary and `checksums.txt` from [GitHub Releases](https://github.com/soulteary/herald-dingtalk/releases). For example, for v1.2.8:
 
 ```bash
-curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.7/herald-dingtalk-linux-amd64
-curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.7/checksums.txt
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.8/herald-dingtalk-linux-amd64
+curl -LO https://github.com/soulteary/herald-dingtalk/releases/download/v1.2.8/checksums.txt
 grep 'herald-dingtalk-linux-amd64$' checksums.txt | sha256sum -c -
 chmod +x herald-dingtalk-linux-amd64
 ./herald-dingtalk-linux-amd64 --version
-# 1.2.7
+# 1.2.8
 ```
 
 To build from source:
@@ -105,12 +105,12 @@ With DingTalk credentials in env, `POST /v1/send` will send work notifications t
 ### Run with Docker
 
 ```bash
-docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.7
+docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.8
 docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  ghcr.io/soulteary/herald-dingtalk:v1.2.7
+  ghcr.io/soulteary/herald-dingtalk:v1.2.8
 ```
 
 Optional: add `-e API_KEY=your_shared_secret` and set `HERALD_DINGTALK_API_KEY` to the same value on Herald.
