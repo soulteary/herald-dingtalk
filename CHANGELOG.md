@@ -6,6 +6,18 @@ The project follows [Semantic Versioning](https://semver.org/). Release tags inc
 
 ## [Unreleased]
 
+## [1.2.9] - 2026-11-26
+
+### Dependencies
+
+- `github.com/soulteary/health-kit/v4`: `v4.0.9` → `v4.0.10`.
+- `github.com/soulteary/logger-kit/v3`: `v3.0.7` → `v3.0.8`.
+- `github.com/soulteary/version-kit/v4`: `v4.0.6` → `v4.0.7`.
+
+The service API, configuration keys and persisted record formats are unchanged by this dependency refresh. Go remains 1.27.4.
+
+See [upgrade and rollback notes](docs/releases/v1.2.9.md).
+
 ## [1.2.8] - 2026-11-13
 
 ### Changed
