@@ -105,12 +105,12 @@ go build -o herald-dingtalk .
 ### 使用 Docker 运行
 
 ```bash
-docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.8
+docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.9
 docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  ghcr.io/soulteary/herald-dingtalk:v1.2.8
+  ghcr.io/soulteary/herald-dingtalk:v1.2.9
 ```
 
 可选：增加 `-e API_KEY=your_shared_secret`，并在 Herald 侧将 `HERALD_DINGTALK_API_KEY` 设为相同值。

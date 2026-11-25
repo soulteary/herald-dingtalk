@@ -105,12 +105,12 @@ With DingTalk credentials in env, `POST /v1/send` will send work notifications t
 ### Run with Docker
 
 ```bash
-docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.8
+docker pull ghcr.io/soulteary/herald-dingtalk:v1.2.9
 docker run -d --name herald-dingtalk -p 8083:8083 \
   -e DINGTALK_APP_KEY=your_app_key \
   -e DINGTALK_APP_SECRET=your_app_secret \
   -e DINGTALK_AGENT_ID=your_agent_id \
-  ghcr.io/soulteary/herald-dingtalk:v1.2.8
+  ghcr.io/soulteary/herald-dingtalk:v1.2.9
 ```
 
 Optional: add `-e API_KEY=your_shared_secret` and set `HERALD_DINGTALK_API_KEY` to the same value on Herald.

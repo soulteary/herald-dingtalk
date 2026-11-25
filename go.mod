@@ -6,10 +6,10 @@ require (
 	github.com/gofiber/fiber/v3 v3.7.0
 	github.com/pterm/pterm v0.12.84
 	github.com/soulteary/cli-kit v1.9.4
-	github.com/soulteary/health-kit/v4 v4.0.9
-	github.com/soulteary/logger-kit/v3 v3.0.7
+	github.com/soulteary/health-kit/v4 v4.0.10
+	github.com/soulteary/logger-kit/v3 v3.0.8
 	github.com/soulteary/provider-kit v1.7.5
-	github.com/soulteary/version-kit/v4 v4.0.6
+	github.com/soulteary/version-kit/v4 v4.0.7
 )
 
 require (
